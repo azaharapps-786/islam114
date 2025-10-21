@@ -1,0 +1,61 @@
+name: islam114
+description: A new Flutter project for Islam114.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+
+  # State Management
+  provider: ^6.1.1
+
+  # Shared Preferences for local storage (settings, etc.)
+  shared_preferences: ^2.2.2
+
+  # Permissions
+  permission_handler: ^11.1.0
+
+  # URL Launcher for Play Store
+  url_launcher: ^6.2.1
+
+  # Haptic Feedback
+  haptic_feedback: ^0.4.0
+
+  # SVG Images
+  flutter_svg: ^2.0.9
+
+
+  # For the custom fonts
+  google_fonts: ^6.1.0
+
+  # App Information
+  package_info_plus: ^4.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Add your custom assets and fonts here
+  assets:
+    - assets/images/
+    - assets/icons/  # <-- THIS LINE IS COMMENTED OUT
+
+  fonts:
+    - family: Uthmanic
+      fonts:
+        - asset: assets/fonts/UthmanicHafs1Ver16.otf
+    - family: Lato
+      fonts:
+        - asset: assets/fonts/Lato-Regular.ttf
+        - asset: assets/fonts/Lato-Bold.ttf
+          weight: 700
