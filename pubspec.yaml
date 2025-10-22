@@ -30,12 +30,27 @@ dependencies:
   # SVG Images
   flutter_svg: ^2.0.9
 
-
   # For the custom fonts
   google_fonts: ^6.1.0
 
   # App Information
   package_info_plus: ^4.2.0
+
+  # Audio Player for Tasbeeh sound and Azan
+  audioplayers: ^5.2.1
+
+  # Date formatting for Tasbeeh history and prayer times
+  intl: ^0.18.1
+
+  # Path Provider for accessing local files
+  path_provider: ^2.1.1
+
+  # Location services for Namaz Times
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+
+  # HTTP requests for API calls
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -48,7 +63,9 @@ flutter:
   # Add your custom assets and fonts here
   assets:
     - assets/images/
-    - assets/icons/  # <-- THIS LINE IS COMMENTED OUT
+    - assets/icons/
+    - assets/sounds/  # For Tasbeeh sound files
+    - assets/audio/azan.mp3   # For Azan sound files
 
   fonts:
     - family: Uthmanic
