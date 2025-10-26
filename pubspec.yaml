@@ -30,6 +30,8 @@ dependencies:
   # SVG Images
   flutter_svg: ^2.0.9
 
+  flutter_launcher_icons: "^0.13.1" # Use the latest version
+
   # For the custom fonts
   google_fonts: ^6.1.0
 
@@ -76,3 +78,17 @@ flutter:
         - asset: assets/fonts/Lato-Regular.ttf
         - asset: assets/fonts/Lato-Bold.ttf
           weight: 700
+
+# ===================================================================
+# ADDED THIS SECTION FOR APP ICON
+# ===================================================================
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icons/icon.png" # The path to your icon file
+
+  # Optional: For modern Android adaptive icons
+  # It's good practice to include this. It uses your icon as the main logo.
+  # You can change the background color to match your app's theme.
+  adaptive_icon_background: "#FFFFFF" # A white background
+  adaptive_icon_foreground: "assets/icons/icon.png" # Your logo on top
