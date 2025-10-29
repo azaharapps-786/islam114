@@ -68,6 +68,8 @@ flutter:
     - assets/icons/
     - assets/sounds/  # For Tasbeeh sound files
     - assets/audio/azan.mp3   # For Azan sound files
+    - assets/dictionaries/quran_dictionary_english.json  # Quran Dictionary English
+    - assets/dictionaries/quran_dictionary_assamese.json  # Quran Dictionary Assamese
 
   fonts:
     - family: Uthmanic
