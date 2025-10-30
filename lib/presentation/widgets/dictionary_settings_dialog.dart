@@ -142,15 +142,11 @@ class _DictionarySettingsDialogState extends State<DictionarySettingsDialog> {
               },
             ),
             RadioListTile<String>(
-              title: const Text('Assamese'),
+              title: const Text('Assamese (Coming Soon)'),
               value: 'assamese',
               groupValue: _selectedLanguage,
-              onChanged: (value) {
-                setState(() {
-                  _selectedLanguage = value!;
-                });
-                widget.onLanguageChanged(value!);
-              },
+              onChanged: null, // Disabled - no callback
+              activeColor: Colors.grey, // Greyed out when disabled
             ),
             const SizedBox(height: 16),
 
@@ -178,7 +174,7 @@ class _DictionarySettingsDialogState extends State<DictionarySettingsDialog> {
           onPressed: () {
             Navigator.of(context).pop();
           },
-          child: const Text('Close'),
+          child: const Text('OK'),
         ),
       ],
     );

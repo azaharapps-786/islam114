@@ -200,10 +200,16 @@ class SettingsPage extends StatelessWidget {
       context: context,
       applicationName: 'Islam114',
       applicationVersion: 'Loading...', // We will load this dynamically
-      applicationIcon: const FlutterLogo(size: 50),
+      applicationIcon: Image.asset(
+        'assets/icons/icon.png',
+        width: 50,
+        height: 50,
+      ),
       children: [
         const Text(
-          'A modern, efficient, and user-friendly Islamic application built with Flutter. It aims to provide easy access to essential Islamic knowledge and tools.',
+          'Islam114 is a comprehensive Islamic application designed to assist Muslim brothers and sisters in their daily spiritual journey. '
+              'The app provides easy access to essential Islamic knowledge, including Quranic verses, prayers, Islamic teachings, '
+              'and practical tools to help integrate Islamic values into everyday life.',
         ),
         const SizedBox(height: 16),
         // We will load the version here
@@ -216,6 +222,48 @@ class SettingsPage extends StatelessWidget {
               return const CircularProgressIndicator();
             }
           },
+        ),
+        const SizedBox(height: 16),
+        const Divider(),
+        const SizedBox(height: 8),
+        const Text(
+          'Developer Information',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        const ListTile(
+          leading: Icon(Icons.person),
+          title: Text('Developer'),
+          subtitle: Text('Azahar Mahmud'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+        ),
+        const ListTile(
+          leading: Icon(Icons.location_on),
+          title: Text('Location'),
+          subtitle: Text('India, Assam, Golaghat'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+        ),
+        const ListTile(
+          leading: Icon(Icons.email),
+          title: Text('Contact'),
+          subtitle: Text('azahar.exe@gmail.com'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+        ),
+        const SizedBox(height: 16),
+        const Divider(),
+        const SizedBox(height: 8),
+        const Center(
+          child: Text(
+            '© 2025 Azahar Mahmud. All Rights Reserved.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+            ),
+            textAlign: TextAlign.center,
+          ),
         ),
       ],
     );

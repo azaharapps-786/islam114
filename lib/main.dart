@@ -1,3 +1,4 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -9,7 +10,8 @@ import 'presentation/pages/settings_page.dart';
 import 'presentation/pages/surah_list_page.dart';
 import 'presentation/pages/tasbeeh_page.dart';
 import 'presentation/pages/namaz_times_page.dart';
-import 'presentation/pages/quran_dictionary_page.dart'; // Add this import
+import 'presentation/pages/quran_dictionary_page.dart';
+import 'presentation/pages/islamic_calendar_page.dart'; // Add this import
 
 void main() async {
   // Ensure Flutter bindings are initialized
@@ -54,7 +56,8 @@ class Islam114App extends StatelessWidget {
             '/surahList': (context) => const SurahListPage(),
             '/tasbeeh': (context) => const TasbeehPage(),
             '/namaz': (context) => const NamazTimesPage(),
-            '/dictionary': (context) => const QuranDictionaryPage(), // Add this route
+            '/dictionary': (context) => const QuranDictionaryPage(),
+            '/calendar': (context) => const IslamicCalendarPage(), // Add this route
           },
         );
       },

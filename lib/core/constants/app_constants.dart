@@ -1,3 +1,4 @@
+// lib/constants/app_constants.dart
 class AppConstants {
   // Firestore Collections
   static const String adminSettingsCollection = 'admin_settings';
@@ -12,4 +13,7 @@ class AppConstants {
   static const String fontScaleKey = 'font_scale';
   static const String lastUpdateDismissedKey = 'last_update_dismissed';
   static const String permanentlyDismissedUpdateKey = 'permanently_dismissed_update';
+
+  // Islamic Calendar Settings
+  static const String calculationMethodKey = 'calculation_method';
 }

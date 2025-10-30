@@ -2,7 +2,7 @@ name: islam114
 description: A new Flutter project for Islam114.
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.3
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -53,6 +53,10 @@ dependencies:
 
   # HTTP requests for API calls
   http: ^1.1.0
+
+  # Islamic Calendar dependencies
+  hijri: ^3.0.0
+  table_calendar: ^3.0.9
 
 dev_dependencies:
   flutter_test:
