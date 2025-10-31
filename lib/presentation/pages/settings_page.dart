@@ -87,7 +87,16 @@ class SettingsPage extends StatelessWidget {
             value: settingsService.themeMode,
             onChanged: (ThemeMode? newTheme) {
               if (newTheme != null) {
-                settingsService.updateThemeMode(newTheme);
+                if (newTheme == ThemeMode.light) {
+                  settingsService.updateThemeMode(newTheme);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Feature Coming Soon!'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
               }
             },
             items: const [
