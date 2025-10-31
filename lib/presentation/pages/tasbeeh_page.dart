@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter/services.dart'; // Import for haptic feedback
+import 'package:flutter/services.dart';
+import 'dart:async'; // For TimeoutException
 
 import '../../core/services/settings_service.dart';
 
@@ -39,6 +40,10 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
   // Audio source cache
   late AudioPlayer _preloadPlayer; // For preloading audio
   bool _audioPreloaded = false;
+
+  // Optimized: Getter for sorted history to avoid recomputation in build
+  List<MapEntry<String, int>> get _sortedHistory => _history.entries.toList()
+    ..sort((a, b) => b.key.compareTo(a.key));
 
   @override
   void initState() {
@@ -129,47 +134,67 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
   }
 
   Future<void> _loadData() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _counter = prefs.getInt('count_$_today') ?? 0;
-      _target = prefs.getInt('target') ?? 33;
-      _soundEnabled = prefs.getBool('sound_enabled') ?? true;
-      _hapticEnabled = prefs.getBool('haptic_enabled') ?? true;
-      _isLoading = false;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance().timeout(
+        const Duration(seconds: 4),  // Prevent indefinite wait
+        onTimeout: () => throw TimeoutException('SharedPreferences timeout', const Duration(seconds: 4)),
+      );
+      if (mounted) {
+        setState(() {
+          _counter = prefs.getInt('count_$_today') ?? 0;
+          _target = prefs.getInt('target') ?? 33;
+          _soundEnabled = prefs.getBool('sound_enabled') ?? true;
+          _hapticEnabled = prefs.getBool('haptic_enabled') ?? true;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('SharedPreferences load error: $e');  // Log for diagnostics
+      if (mounted) {
+        setState(() { _isLoading = false; });  // Fallback to defaults
+      }
+    }
 
     // Load history separately to avoid blocking UI
     _loadHistory();
   }
 
   Future<void> _loadHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final Map<String, int> newHistory = {};
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final Map<String, int> newHistory = {};
 
-    final keys = prefs.getKeys().where((key) => key.startsWith('count_')).toList();
-    for (final key in keys) {
-      final date = key.substring(6); // Remove 'count_' prefix
-      newHistory[date] = prefs.getInt(key) ?? 0;
-    }
+      final keys = prefs.getKeys().where((key) => key.startsWith('count_')).toList();
+      for (final key in keys) {
+        final date = key.substring(6); // Remove 'count_' prefix
+        newHistory[date] = prefs.getInt(key) ?? 0;
+      }
 
-    if (mounted) {
-      setState(() {
-        _history.clear();
-        _history.addAll(newHistory);
-      });
+      if (mounted) {
+        setState(() {
+          _history.clear();
+          _history.addAll(newHistory);
+        });
+      }
+    } catch (e) {
+      debugPrint('History load error: $e');
     }
   }
 
   Future<void> _saveData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('count_$_today', _counter);
-    await prefs.setInt('target', _target);
-    await prefs.setBool('sound_enabled', _soundEnabled);
-    await prefs.setBool('haptic_enabled', _hapticEnabled);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('count_$_today', _counter);
+      await prefs.setInt('target', _target);
+      await prefs.setBool('sound_enabled', _soundEnabled);
+      await prefs.setBool('haptic_enabled', _hapticEnabled);
 
-    // Update history after saving
-    _history[_today] = _counter;
-    if (mounted) setState(() {});
+      // Update history after saving
+      _history[_today] = _counter;
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Save data error: $e');
+    }
   }
 
   void _playSound() {
@@ -184,9 +209,10 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
           }
         }
 
-        // If no player is available, force use the first one
+        // If no player is available, force use the first one with bounds check
         if (playerIndex == -1) {
           playerIndex = 0;
+          if (playerIndex >= _poolSize) return;  // Safety check
           debugPrint('No available player, forcing use of player 0');
         }
 
@@ -361,293 +387,290 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
             constraints: BoxConstraints(
               minHeight: screenHeight - AppBar().preferredSize.height - MediaQuery.of(context).padding.top,
             ),
-            child: IntrinsicHeight(
-              child: Column(
-                children: [
-                  // Counter Display - Reduced padding
-                  TweenAnimationBuilder<double>(
-                    key: ValueKey('counter-$_animationKey'),
-                    duration: const Duration(milliseconds: 600),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    curve: Curves.easeOut,
-                    builder: (context, value, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 20 * (1 - value)),
-                        child: Transform.scale(
-                          scale: value,
-                          child: Opacity(
-                            opacity: value,
-                            child: child,
+            child: Column(  // Removed IntrinsicHeight
+              children: [
+                // Counter Display - Reduced padding
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('counter-$_animationKey'),
+                  duration: const Duration(milliseconds: 600),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), // Reduced from 16
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _pulseAnimation.value,
+                              child: Text(
+                                '$_counter',
+                                style: TextStyle(
+                                  fontSize: 48 * fontScale, // Reduced from 60
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 8), // Reduced from 12
+                        Text(
+                          'Progress: $_counter / $_target',
+                          style: TextStyle(
+                            fontSize: 16 * fontScale, // Reduced from 18
+                            color: theme.colorScheme.onSurface.withOpacity(0.7),  // Fixed: Use withOpacity
                           ),
                         ),
-                      );
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), // Reduced from 16
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          AnimatedBuilder(
-                            animation: _pulseAnimation,
-                            builder: (context, child) {
-                              return Transform.scale(
-                                scale: _pulseAnimation.value,
-                                child: Text(
-                                  '$_counter',
-                                  style: TextStyle(
-                                    fontSize: 48 * fontScale, // Reduced from 60
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.primary,
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(
+                          value: _target > 0 ? _counter / _target : 0.0,
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(4),
+                          backgroundColor: theme.colorScheme.surface,
+                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Tap Area
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('tap-area-$_animationKey'),
+                  duration: const Duration(milliseconds: 600),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Flexible(  // Fixed: Replaced Expanded with Flexible
+                    fit: FlexFit.loose,  // Allow flexible sizing
+                    flex: 3,
+                    child: GestureDetector(
+                      onTap: _incrementCounter,
+                      child: Container(
+                        margin: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withOpacity(0.1),  // Fixed: Use withOpacity
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: theme.colorScheme.primary.withOpacity(0.3),  // Fixed: Use withOpacity
+                            width: 2,
+                          ),
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.touch_app,
+                                size: 56 * fontScale,
+                                color: theme.colorScheme.primary.withOpacity(0.5),  // Fixed: Use withOpacity
+                              ),
+                              const SizedBox(height: 200),
+                              Text(
+                                'TAP HERE',
+                                style: TextStyle(
+                                  fontSize: 26 * fontScale,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary.withOpacity(0.5),  // Fixed: Use withOpacity
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Control Buttons
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('controls-$_animationKey'),
+                  duration: const Duration(milliseconds: 700),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceEvenly,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        SizedBox(
+                          width: 100,
+                          child: ElevatedButton.icon(
+                            onPressed: _setTarget,
+                            icon: const Icon(Icons.flag),
+                            label: const Text('Target'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: theme.colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 100,
+                          child: ElevatedButton.icon(
+                            onPressed: _decrementCounter,
+                            icon: const Icon(Icons.undo),
+                            label: const Text('Undo'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: theme.colorScheme.secondary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 100,
+                          child: ElevatedButton.icon(
+                            onPressed: _resetCounter,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Reset'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // History Section
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('history-$_animationKey'),
+                  duration: const Duration(milliseconds: 800),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'History',
+                          style: TextStyle(
+                            fontSize: 18 * fontScale,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+                        Container(
+                          height: 100,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outline.withOpacity(0.3),  // Fixed: Use withOpacity
+                            ),
+                          ),
+                          child: _history.isEmpty
+                              ? const Center(child: Text('No history yet'))
+                              : ListView.builder(
+                            key: ValueKey('history-list-$_animationKey'), // Unique key for history list
+                            padding: const EdgeInsets.all(8),
+                            itemCount: _sortedHistory.length,  // Fixed: Use getter
+                            itemBuilder: (context, index) {
+                              final entry = _sortedHistory[index];  // Fixed: Use pre-sorted getter
+                              final date = DateTime.parse(entry.key);
+                              final formattedDate = DateFormat('MMM dd, yyyy').format(date);
+
+                              return TweenAnimationBuilder<double>(
+                                key: ValueKey('history-item-$index-$_animationKey'), // Staggered key
+                                duration: Duration(milliseconds: 400 + (index * 80)),
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                curve: Curves.easeOut,
+                                builder: (context, itemValue, child) {
+                                  return Transform.translate(
+                                    offset: Offset(0, 10 * (1 - itemValue)),
+                                    child: Transform.scale(
+                                      scale: itemValue,
+                                      child: Opacity(
+                                        opacity: itemValue,
+                                        child: child,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(formattedDate),
+                                      Text(
+                                        '${entry.value} taps',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               );
                             },
                           ),
-                          const SizedBox(height: 8), // Reduced from 12
-                          Text(
-                            'Progress: $_counter / $_target',
-                            style: TextStyle(
-                              fontSize: 16 * fontScale, // Reduced from 18
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          LinearProgressIndicator(
-                            value: _target > 0 ? _counter / _target : 0.0,
-                            minHeight: 8,
-                            borderRadius: BorderRadius.circular(4),
-                            backgroundColor: theme.colorScheme.surface,
-                            valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-
-                  // Tap Area
-                  TweenAnimationBuilder<double>(
-                    key: ValueKey('tap-area-$_animationKey'),
-                    duration: const Duration(milliseconds: 600),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    curve: Curves.easeOut,
-                    builder: (context, value, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 20 * (1 - value)),
-                        child: Transform.scale(
-                          scale: value,
-                          child: Opacity(
-                            opacity: value,
-                            child: child,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Expanded(
-                      flex: 3,
-                      child: GestureDetector(
-                        onTap: _incrementCounter,
-                        child: Container(
-                          margin: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                              width: 2,
-                            ),
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.touch_app,
-                                  size: 56 * fontScale,
-                                  color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                                ),
-                                const SizedBox(height: 200),
-                                Text(
-                                  'TAP HERE',
-                                  style: TextStyle(
-                                    fontSize: 26 * fontScale,
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Control Buttons
-                  TweenAnimationBuilder<double>(
-                    key: ValueKey('controls-$_animationKey'),
-                    duration: const Duration(milliseconds: 700),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    curve: Curves.easeOut,
-                    builder: (context, value, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 20 * (1 - value)),
-                        child: Transform.scale(
-                          scale: value,
-                          child: Opacity(
-                            opacity: value,
-                            child: child,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Wrap(
-                        alignment: WrapAlignment.spaceEvenly,
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          SizedBox(
-                            width: 100,
-                            child: ElevatedButton.icon(
-                              onPressed: _setTarget,
-                              icon: const Icon(Icons.flag),
-                              label: const Text('Target'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: theme.colorScheme.primary,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                              ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 100,
-                            child: ElevatedButton.icon(
-                              onPressed: _decrementCounter,
-                              icon: const Icon(Icons.undo),
-                              label: const Text('Undo'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: theme.colorScheme.secondary,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                              ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 100,
-                            child: ElevatedButton.icon(
-                              onPressed: _resetCounter,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reset'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // History Section
-                  TweenAnimationBuilder<double>(
-                    key: ValueKey('history-$_animationKey'),
-                    duration: const Duration(milliseconds: 800),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    curve: Curves.easeOut,
-                    builder: (context, value, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 20 * (1 - value)),
-                        child: Transform.scale(
-                          scale: value,
-                          child: Opacity(
-                            opacity: value,
-                            child: child,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'History',
-                            style: TextStyle(
-                              fontSize: 18 * fontScale,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 22),
-                          Container(
-                            height: 100,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surface,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: theme.colorScheme.outline.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: _history.isEmpty
-                                ? const Center(child: Text('No history yet'))
-                                : ListView.builder(
-                              key: ValueKey('history-list-$_animationKey'), // Unique key for history list
-                              padding: const EdgeInsets.all(8),
-                              itemCount: _history.length,
-                              itemBuilder: (context, index) {
-                                final sortedEntries = _history.entries.toList()
-                                  ..sort((a, b) => b.key.compareTo(a.key));
-                                final entry = sortedEntries[index];
-                                final date = DateTime.parse(entry.key);
-                                final formattedDate = DateFormat('MMM dd, yyyy').format(date);
-
-                                return TweenAnimationBuilder<double>(
-                                  key: ValueKey('history-item-$index-$_animationKey'), // Staggered key
-                                  duration: Duration(milliseconds: 400 + (index * 80)),
-                                  tween: Tween(begin: 0.0, end: 1.0),
-                                  curve: Curves.easeOut,
-                                  builder: (context, itemValue, child) {
-                                    return Transform.translate(
-                                      offset: Offset(0, 10 * (1 - itemValue)),
-                                      child: Transform.scale(
-                                        scale: itemValue,
-                                        child: Opacity(
-                                          opacity: itemValue,
-                                          child: child,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 2),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(formattedDate),
-                                        Text(
-                                          '${entry.value} taps',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: theme.colorScheme.primary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
