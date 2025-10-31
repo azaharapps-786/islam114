@@ -29,7 +29,8 @@ class HijriCalendarWidget extends StatefulWidget {
   State<HijriCalendarWidget> createState() => _HijriCalendarWidgetState();
 }
 
-class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
+class _HijriCalendarWidgetState extends State<HijriCalendarWidget>
+    with TickerProviderStateMixin {
   late HijriCalendar _currentMonth;
   late HijriCalendar _selectedDate;
   late CalendarFormat _calendarFormat;
@@ -41,6 +42,9 @@ class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
   late DateTime _currentMonthStart;
   late DateTime _currentMonthEnd;
 
+  // Animation controller for format changes
+  late AnimationController _formatController;
+
   // Hijri month names
   final List<String> _hijriMonthNames = [
     "Muharram", "Safar", "Rabi' al-Awwal", "Rabi' al-Thani",
@@ -51,7 +55,7 @@ class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
   @override
   void initState() {
     super.initState();
-    _calendarFormat = CalendarFormat.month; // Always use month format
+    _calendarFormat = widget.calendarFormat;
     _currentMonth = HijriCalendar();
     _currentMonth.hYear = widget.initialDate.hYear;
     _currentMonth.hMonth = widget.initialDate.hMonth;
@@ -66,6 +70,18 @@ class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
 
     // Set safe date ranges for the calendar
     _updateDateRanges();
+
+    // Initialize animation controller
+    _formatController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _formatController.dispose();
+    super.dispose();
   }
 
   void _updateDateRanges() {
@@ -115,6 +131,9 @@ class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
 
         _updateDateRanges();
       });
+    }
+    if (oldWidget.calendarFormat != widget.calendarFormat) {
+      setState(() => _calendarFormat = widget.calendarFormat);
     }
   }
 
@@ -180,29 +199,76 @@ class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
         widget.events[normalizedDate]!.isNotEmpty;
   }
 
+  // New: Handle format changes
+  void _onFormatChanged(CalendarFormat format) {
+    setState(() => _calendarFormat = format);
+    widget.onFormatChanged(format);
+    _formatController.forward().then((_) => _formatController.reverse());
+  }
+
+  // New: Get format-specific row count
+  int _getRowsForFormat() {
+    final daysInMonth = _getDaysInHijriMonth(_currentMonth.hYear, _currentMonth.hMonth);
+    final tempHijri = HijriCalendar();
+    tempHijri.hYear = _currentMonth.hYear;
+    tempHijri.hMonth = _currentMonth.hMonth;
+    tempHijri.hDay = 1;
+    final firstDayGreg = _hijriToGregorian(tempHijri);
+    final firstDayOfWeek = firstDayGreg.weekday % 7;
+    final totalCells = firstDayOfWeek + daysInMonth;
+    switch (_calendarFormat) {
+      case CalendarFormat.month:
+        return (totalCells / 7).ceil();
+      case CalendarFormat.twoWeeks:
+        return 2;
+      case CalendarFormat.week:
+        return 1;
+      default:
+        return (totalCells / 7).ceil();
+    }
+  }
+
+  double _getCalendarHeight() {
+    final rows = _getRowsForFormat();
+    return rows * 50.0; // Consistent cell height
+  }
+
+  // New: Navigate months (used for chevrons and swipes)
+  void _navigateMonth(int direction) {
+    setState(() {
+      if (direction > 0) {
+        if (_currentMonth.hMonth == 12) {
+          _currentMonth.hMonth = 1;
+          _currentMonth.hYear += 1;
+        } else {
+          _currentMonth.hMonth += 1;
+        }
+      } else {
+        if (_currentMonth.hMonth == 1) {
+          _currentMonth.hMonth = 12;
+          _currentMonth.hYear -= 1;
+        } else {
+          _currentMonth.hMonth -= 1;
+        }
+      }
+      _focusedDay = _hijriToGregorian(_currentMonth);
+      _updateDateRanges();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Column(
       children: [
-        // Month navigation header
+        // Month navigation header with format toggle
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
             children: [
               IconButton(
-                onPressed: () {
-                  if (_currentMonth.hMonth == 1) {
-                    _currentMonth.hMonth = 12;
-                    _currentMonth.hYear -= 1;
-                  } else {
-                    _currentMonth.hMonth -= 1;
-                  }
-                  _focusedDay = _hijriToGregorian(_currentMonth);
-                  _updateDateRanges();
-                  setState(() {});
-                },
+                onPressed: () => _navigateMonth(-1),
                 icon: Icon(
                   Icons.chevron_left,
                   color: theme.colorScheme.primary,
@@ -210,50 +276,58 @@ class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
                 tooltip: 'Previous month',
               ),
               Expanded(
-                child: InkWell(
-                  onTap: _goToToday,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          _hijriMonthNames[_currentMonth.hMonth - 1],
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16 * widget.fontScale,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onSurface,
-                          ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    InkWell(
+                      onTap: _goToToday,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
                         ),
-                        Text(
-                          '${_currentMonth.hYear} AH',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12 * widget.fontScale,
-                            color: theme.colorScheme.onSurface.withOpacity(0.7),
-                          ),
+                        child: Column(
+                          children: [
+                            Text(
+                              _hijriMonthNames[_currentMonth.hMonth - 1],
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 16 * widget.fontScale,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                            Text(
+                              '${_currentMonth.hYear} AH',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12 * widget.fontScale,
+                                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                    IconButton(
+                      onPressed: () {
+                        final newFormat = _calendarFormat == CalendarFormat.month
+                            ? CalendarFormat.twoWeeks
+                            : CalendarFormat.month;
+                        _onFormatChanged(newFormat);
+                      },
+                      icon: Icon(
+                        _calendarFormat == CalendarFormat.month ? Icons.view_week : Icons.calendar_month,
+                        color: theme.colorScheme.primary,
+                      ),
+                      tooltip: 'Toggle Format',
+                    ),
+                  ],
                 ),
               ),
               IconButton(
-                onPressed: () {
-                  if (_currentMonth.hMonth == 12) {
-                    _currentMonth.hMonth = 1;
-                    _currentMonth.hYear += 1;
-                  } else {
-                    _currentMonth.hMonth += 1;
-                  }
-                  _focusedDay = _hijriToGregorian(_currentMonth);
-                  _updateDateRanges();
-                  setState(() {});
-                },
+                onPressed: () => _navigateMonth(1),
                 icon: Icon(
                   Icons.chevron_right,
                   color: theme.colorScheme.primary,
@@ -264,20 +338,26 @@ class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
           ),
         ),
 
-        // Day names header - with proper padding
+        // Day names header with weekend styling
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((name) {
+            children: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                .asMap()
+                .entries
+                .map((entry) {
+              final isWeekend = entry.key == 0 || entry.key == 6; // Sun=0, Sat=6
               return Expanded(
                 child: Center(
                   child: Text(
-                    name,
+                    entry.value,
                     style: TextStyle(
                       fontSize: 12 * widget.fontScale,
                       fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      color: isWeekend
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurface.withOpacity(0.6),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -287,69 +367,101 @@ class _HijriCalendarWidgetState extends State<HijriCalendarWidget> {
           ),
         ),
 
-        // Calendar grid with constrained height
+        // Calendar grid with swipe and format support
         Expanded(
-          child: _buildCalendarGrid(theme),
+          child: GestureDetector(
+            onHorizontalDragEnd: (details) {
+              if (details.primaryVelocity! > 500) {
+                _navigateMonth(-1); // Swipe left -> previous
+              } else if (details.primaryVelocity! < -500) {
+                _navigateMonth(1); // Swipe right -> next
+              }
+            },
+            child: AnimatedBuilder(
+              animation: _formatController,
+              builder: (context, child) {
+                return Container(
+                  height: _getCalendarHeight(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildCalendarGridForFormat(theme),
+                );
+              },
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildCalendarGrid(ThemeData theme) {
-    // Get days in month using the hijri package's built-in method
-    final daysInMonth = _getDaysInHijriMonth(
-      _currentMonth.hYear,
-      _currentMonth.hMonth,
-    );
-
-    // Get the first day of the month
+  // New: Build grid based on format
+  Widget _buildCalendarGridForFormat(ThemeData theme) {
+    final daysInMonth = _getDaysInHijriMonth(_currentMonth.hYear, _currentMonth.hMonth);
     final firstDay = HijriCalendar();
     firstDay.hYear = _currentMonth.hYear;
     firstDay.hMonth = _currentMonth.hMonth;
     firstDay.hDay = 1;
-
     final firstDayGregorian = _hijriToGregorian(firstDay);
-    final firstDayOfWeek = firstDayGregorian.weekday % 7; // Convert to 0=Sunday
+    final firstDayOfWeek = firstDayGregorian.weekday % 7; // 0=Sunday
 
-    final List<Widget> dayWidgets = [];
+    List<Widget> dayWidgets = [];
 
-    // Add empty cells for days before the first day of the month
-    for (int i = 0; i < firstDayOfWeek; i++) {
-      dayWidgets.add(const SizedBox.shrink());
+    switch (_calendarFormat) {
+      case CalendarFormat.month:
+      // Full month view
+        for (int i = 0; i < firstDayOfWeek; i++) {
+          dayWidgets.add(const SizedBox.shrink());
+        }
+        for (int day = 1; day <= daysInMonth; day++) {
+          final weekdayIndex = (firstDayOfWeek + day - 1) % 7;
+          final isWeekend = weekdayIndex == 0 || weekdayIndex == 6;
+          dayWidgets.add(
+            _DayCell(
+              day: day,
+              isToday: _isToday(day),
+              isSelected: _isSelected(day),
+              hasEvents: _hasEvents(day),
+              isWeekend: isWeekend,
+              onTap: () => _selectDate(day),
+              theme: theme,
+              fontScale: widget.fontScale,
+            ),
+          );
+        }
+        break;
+      case CalendarFormat.twoWeeks:
+      case CalendarFormat.week:
+      // Week or two-week view (show current week(s) starting from month start)
+        final cellsPerView = _calendarFormat == CalendarFormat.week ? 7 : 14;
+        for (int i = 0; i < cellsPerView; i++) {
+          final day = i - firstDayOfWeek + 1;
+          final weekdayIndex = i % 7;
+          final isWeekend = weekdayIndex == 0 || weekdayIndex == 6;
+          if (day >= 1 && day <= daysInMonth) {
+            dayWidgets.add(
+              _DayCell(
+                day: day,
+                isToday: _isToday(day),
+                isSelected: _isSelected(day),
+                hasEvents: _hasEvents(day),
+                isWeekend: isWeekend,
+                onTap: () => _selectDate(day),
+                theme: theme,
+                fontScale: widget.fontScale,
+              ),
+            );
+          } else {
+            dayWidgets.add(const SizedBox.shrink());
+          }
+        }
+        break;
     }
 
-    // Add cells for each day of the month
-    for (int day = 1; day <= daysInMonth; day++) {
-      dayWidgets.add(
-        _DayCell(
-          day: day,
-          isToday: _isToday(day),
-          isSelected: _isSelected(day),
-          hasEvents: _hasEvents(day),
-          onTap: () => _selectDate(day),
-          theme: theme,
-          fontScale: widget.fontScale,
-        ),
-      );
-    }
-
-    // Calculate the number of rows needed
-    final totalCells = dayWidgets.length;
-    final rows = (totalCells / 7).ceil();
-
-    // Always use full month height since we removed format options
-    final calendarHeight = rows * 50.0;
-
-    return Container(
-      height: calendarHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GridView.count(
-        crossAxisCount: 7,
-        children: dayWidgets,
-        childAspectRatio: 1.0,
-        mainAxisSpacing: 4,
-        crossAxisSpacing: 4,
-      ),
+    return GridView.count(
+      crossAxisCount: 7,
+      children: dayWidgets,
+      childAspectRatio: 1.0,
+      mainAxisSpacing: 4,
+      crossAxisSpacing: 4,
     );
   }
 
@@ -379,6 +491,7 @@ class _DayCell extends StatelessWidget {
   final bool isToday;
   final bool isSelected;
   final bool hasEvents;
+  final bool isWeekend; // New: For weekend styling
   final VoidCallback onTap;
   final ThemeData theme;
   final double fontScale;
@@ -388,6 +501,7 @@ class _DayCell extends StatelessWidget {
     required this.isToday,
     required this.isSelected,
     required this.hasEvents,
+    required this.isWeekend,
     required this.onTap,
     required this.theme,
     required this.fontScale,
@@ -395,6 +509,14 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textColor = isSelected
+        ? Colors.white
+        : isToday
+        ? theme.colorScheme.primary
+        : isWeekend
+        ? theme.colorScheme.error
+        : theme.colorScheme.onSurface;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -412,6 +534,16 @@ class _DayCell extends StatelessWidget {
             width: 2,
           )
               : null,
+          // New: Shadow for selected days
+          boxShadow: isSelected
+              ? [
+            BoxShadow(
+              color: theme.colorScheme.primary.withOpacity(0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            )
+          ]
+              : null,
         ),
         child: Stack(
           children: [
@@ -423,14 +555,11 @@ class _DayCell extends StatelessWidget {
                   fontWeight: isToday || isSelected
                       ? FontWeight.bold
                       : FontWeight.normal,
-                  color: isSelected
-                      ? Colors.white
-                      : isToday
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface,
+                  color: textColor,
                 ),
               ),
             ),
+            // New: Cap at 3 markers if multiple events (simple dot for now)
             if (hasEvents)
               Positioned(
                 bottom: 4,

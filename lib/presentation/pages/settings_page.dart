@@ -5,8 +5,51 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/themes/app_theme.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  int _animationKey = 0; // Key to force recreation of animated elements
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
+    _restartAnimation(); // Initialize animations
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  // Restart the page animations and trigger a rebuild for list items.
+  void _restartAnimation() {
+    _animationController.reset();
+    _animationController.forward();
+    _animationKey++;
+    // Force a rebuild to replay list animations via key changes.
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,49 +60,120 @@ class SettingsPage extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 4,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          // --- Appearance Section ---
-          _buildSectionHeader(context, 'Appearance', Icons.palette_outlined),
-          const SizedBox(height: 8),
-          Card(
-            child: Column(
-              children: [
-                // Theme Selector
-                _buildThemeSelector(context),
-                const Divider(height: 1),
-                // Font Size Slider
-                _buildFontSlider(context),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // --- About Section ---
-          _buildSectionHeader(context, 'About', Icons.info_outline),
-          const SizedBox(height: 8),
-          Card(
-            child: Column(
-              children: [
-                _buildAppVersionTile(context), // FIX 1: Created a separate widget for this
-                const Divider(height: 1),
-                _buildListTile(
-                  context,
-                  title: 'About Us',
-                  subtitle: 'Learn more about Islam114',
-                  leading: Icons.info,
-                  onTap: () => _showAboutDialog(context), // FIX 2: Pass context here
+      body: SafeArea(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: ListView(
+            key: ValueKey('settings-list-$_animationKey'),
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              // --- Appearance Section ---
+              TweenAnimationBuilder<double>(
+                key: ValueKey('appearance-header-$_animationKey'),
+                duration: const Duration(milliseconds: 300),
+                tween: Tween(begin: 0.0, end: 1.0),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Transform.translate(
+                    offset: Offset(0, 20 * (1 - value)),
+                    child: Transform.scale(
+                      scale: value,
+                      child: Opacity(
+                        opacity: value,
+                        child: child,
+                      ),
+                    ),
+                  );
+                },
+                child: _buildSectionHeader(context, 'Appearance', Icons.palette_outlined),
+              ),
+              const SizedBox(height: 8),
+              TweenAnimationBuilder<double>(
+                key: ValueKey('appearance-card-$_animationKey'),
+                duration: const Duration(milliseconds: 400),
+                tween: Tween(begin: 0.0, end: 1.0),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Transform.translate(
+                    offset: Offset(0, 20 * (1 - value)),
+                    child: Transform.scale(
+                      scale: value,
+                      child: Opacity(
+                        opacity: value,
+                        child: child,
+                      ),
+                    ),
+                  );
+                },
+                child: Card(
+                  child: Column(
+                    children: [
+                      // Theme Selector
+                      _buildThemeSelector(context),
+                      const Divider(height: 1),
+                      // Font Size Slider
+                      _buildFontSlider(context),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 24),
+
+              // --- About Section ---
+              TweenAnimationBuilder<double>(
+                key: ValueKey('about-header-$_animationKey'),
+                duration: const Duration(milliseconds: 500),
+                tween: Tween(begin: 0.0, end: 1.0),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Transform.translate(
+                    offset: Offset(0, 20 * (1 - value)),
+                    child: Transform.scale(
+                      scale: value,
+                      child: Opacity(
+                        opacity: value,
+                        child: child,
+                      ),
+                    ),
+                  );
+                },
+                child: _buildSectionHeader(context, 'About', Icons.info_outline),
+              ),
+              const SizedBox(height: 8),
+              TweenAnimationBuilder<double>(
+                key: ValueKey('about-card-$_animationKey'),
+                duration: const Duration(milliseconds: 600),
+                tween: Tween(begin: 0.0, end: 1.0),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Transform.translate(
+                    offset: Offset(0, 20 * (1 - value)),
+                    child: Transform.scale(
+                      scale: value,
+                      child: Opacity(
+                        opacity: value,
+                        child: child,
+                      ),
+                    ),
+                  );
+                },
+                child: Card(
+                  child: Column(
+                    children: [
+                      _buildAppVersionTile(context),
+                      const Divider(height: 1),
+                      _buildAboutListTile(context),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  // FIX 3: Added context as a required parameter
   Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
     return Row(
       children: [
@@ -166,7 +280,6 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  // FIX 1: A new widget to handle the app version loading
   Widget _buildAppVersionTile(BuildContext context) {
     return FutureBuilder<PackageInfo>(
       future: PackageInfo.fromPlatform(),
@@ -191,6 +304,34 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  Widget _buildAboutListTile(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('about-tile-$_animationKey'),
+      duration: const Duration(milliseconds: 700),
+      tween: Tween(begin: 0.0, end: 1.0),
+      curve: Curves.easeOut,
+      builder: (context, value, child) {
+        return Transform.translate(
+          offset: Offset(0, 20 * (1 - value)),
+          child: Transform.scale(
+            scale: value,
+            child: Opacity(
+              opacity: value,
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: _buildListTile(
+        context,
+        title: 'About Us',
+        subtitle: 'Learn more about Islam114',
+        leading: Icons.info,
+        onTap: () => _showAboutDialog(context),
+      ),
+    );
+  }
+
   String _getThemeDisplayName(ThemeMode themeMode) {
     switch (themeMode) {
       case ThemeMode.light:
@@ -203,7 +344,6 @@ class SettingsPage extends StatelessWidget {
     }
   }
 
-  // FIX 2: The function now requires a BuildContext
   void _showAboutDialog(BuildContext context) {
     showAboutDialog(
       context: context,

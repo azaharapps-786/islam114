@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +18,9 @@ class TasbeehPage extends StatefulWidget {
 class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  late AnimationController _pageAnimationController;
+  late Animation<double> _fadeAnimation;
+  int _animationKey = 0; // Key to force recreation of animated elements
 
   int _counter = 0;
   int _target = 33; // Default target
@@ -50,10 +54,32 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    _pageAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _pageAnimationController, curve: Curves.easeInOut),
+    );
+
+    _restartAnimation(); // Initialize animations
+
     // Initialize audio player pool
     _initializeAudioPlayerPool();
 
     _loadData();
+  }
+
+  // Restart the page animations and trigger a rebuild for list items.
+  void _restartAnimation() {
+    _pageAnimationController.reset();
+    _pageAnimationController.forward();
+    _animationKey++;
+    // Force a rebuild to replay list animations via key changes.
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _initializeAudioPlayerPool() async {
@@ -91,6 +117,7 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
   @override
   void dispose() {
     _pulseController.dispose();
+    _pageAnimationController.dispose();
     _preloadPlayer.dispose();
 
     // Dispose all audio players in the pool
@@ -327,206 +354,300 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: screenHeight - AppBar().preferredSize.height - MediaQuery.of(context).padding.top,
-          ),
-          child: IntrinsicHeight(
-            child: Column(
-              children: [
-                // Counter Display - Reduced padding
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), // Reduced from 16
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      AnimatedBuilder(
-                        animation: _pulseAnimation,
-                        builder: (context, child) {
-                          return Transform.scale(
-                            scale: _pulseAnimation.value,
-                            child: Text(
-                              '$_counter',
-                              style: TextStyle(
-                                fontSize: 48 * fontScale, // Reduced from 60
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 8), // Reduced from 12
-                      Text(
-                        'Progress: $_counter / $_target',
-                        style: TextStyle(
-                          fontSize: 16 * fontScale, // Reduced from 18
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          : FadeTransition(
+        opacity: _fadeAnimation,
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: screenHeight - AppBar().preferredSize.height - MediaQuery.of(context).padding.top,
+            ),
+            child: IntrinsicHeight(
+              child: Column(
+                children: [
+                  // Counter Display - Reduced padding
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey('counter-$_animationKey'),
+                    duration: const Duration(milliseconds: 600),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    curve: Curves.easeOut,
+                    builder: (context, value, child) {
+                      return Transform.translate(
+                        offset: Offset(0, 20 * (1 - value)),
+                        child: Transform.scale(
+                          scale: value,
+                          child: Opacity(
+                            opacity: value,
+                            child: child,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: _target > 0 ? _counter / _target : 0.0,
-                        minHeight: 8,
-                        borderRadius: BorderRadius.circular(4),
-                        backgroundColor: theme.colorScheme.surface,
-                        valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Tap Area
-                Expanded(
-                  flex: 3,
-                  child: GestureDetector(
-                    onTap: _incrementCounter,
+                      );
+                    },
                     child: Container(
-                      margin: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                          width: 2,
-                        ),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), // Reduced from 16
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AnimatedBuilder(
+                            animation: _pulseAnimation,
+                            builder: (context, child) {
+                              return Transform.scale(
+                                scale: _pulseAnimation.value,
+                                child: Text(
+                                  '$_counter',
+                                  style: TextStyle(
+                                    fontSize: 48 * fontScale, // Reduced from 60
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 8), // Reduced from 12
+                          Text(
+                            'Progress: $_counter / $_target',
+                            style: TextStyle(
+                              fontSize: 16 * fontScale, // Reduced from 18
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            value: _target > 0 ? _counter / _target : 0.0,
+                            minHeight: 8,
+                            borderRadius: BorderRadius.circular(4),
+                            backgroundColor: theme.colorScheme.surface,
+                            valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                          ),
+                        ],
                       ),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.touch_app,
-                              size: 56 * fontScale,
-                              color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                    ),
+                  ),
+
+                  // Tap Area
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey('tap-area-$_animationKey'),
+                    duration: const Duration(milliseconds: 600),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    curve: Curves.easeOut,
+                    builder: (context, value, child) {
+                      return Transform.translate(
+                        offset: Offset(0, 20 * (1 - value)),
+                        child: Transform.scale(
+                          scale: value,
+                          child: Opacity(
+                            opacity: value,
+                            child: child,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Expanded(
+                      flex: 3,
+                      child: GestureDetector(
+                        onTap: _incrementCounter,
+                        child: Container(
+                          margin: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                              width: 2,
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'TAP HERE',
-                              style: TextStyle(
-                                fontSize: 26 * fontScale,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                              ),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.touch_app,
+                                  size: 56 * fontScale,
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                                ),
+                                const SizedBox(height: 200),
+                                Text(
+                                  'TAP HERE',
+                                  style: TextStyle(
+                                    fontSize: 26 * fontScale,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
 
-                // Control Buttons
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Wrap(
-                    alignment: WrapAlignment.spaceEvenly,
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      SizedBox(
-                        width: 100,
-                        child: ElevatedButton.icon(
-                          onPressed: _setTarget,
-                          icon: const Icon(Icons.flag),
-                          label: const Text('Target'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: theme.colorScheme.primary,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 8),
+                  // Control Buttons
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey('controls-$_animationKey'),
+                    duration: const Duration(milliseconds: 700),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    curve: Curves.easeOut,
+                    builder: (context, value, child) {
+                      return Transform.translate(
+                        offset: Offset(0, 20 * (1 - value)),
+                        child: Transform.scale(
+                          scale: value,
+                          child: Opacity(
+                            opacity: value,
+                            child: child,
                           ),
                         ),
-                      ),
-                      SizedBox(
-                        width: 100,
-                        child: ElevatedButton.icon(
-                          onPressed: _decrementCounter,
-                          icon: const Icon(Icons.undo),
-                          label: const Text('Undo'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: theme.colorScheme.secondary,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 8),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceEvenly,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          SizedBox(
+                            width: 100,
+                            child: ElevatedButton.icon(
+                              onPressed: _setTarget,
+                              icon: const Icon(Icons.flag),
+                              label: const Text('Target'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.colorScheme.primary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 100,
-                        child: ElevatedButton.icon(
-                          onPressed: _resetCounter,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Reset'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          SizedBox(
+                            width: 100,
+                            child: ElevatedButton.icon(
+                              onPressed: _decrementCounter,
+                              icon: const Icon(Icons.undo),
+                              label: const Text('Undo'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.colorScheme.secondary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                            ),
                           ),
-                        ),
+                          SizedBox(
+                            width: 100,
+                            child: ElevatedButton.icon(
+                              onPressed: _resetCounter,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Reset'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
 
-                // History Section
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'History',
-                        style: TextStyle(
-                          fontSize: 18 * fontScale,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        height: 100,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surface,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                  // History Section
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey('history-$_animationKey'),
+                    duration: const Duration(milliseconds: 800),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    curve: Curves.easeOut,
+                    builder: (context, value, child) {
+                      return Transform.translate(
+                        offset: Offset(0, 20 * (1 - value)),
+                        child: Transform.scale(
+                          scale: value,
+                          child: Opacity(
+                            opacity: value,
+                            child: child,
                           ),
                         ),
-                        child: _history.isEmpty
-                            ? const Center(child: Text('No history yet'))
-                            : ListView.builder(
-                          padding: const EdgeInsets.all(8),
-                          itemCount: _history.length,
-                          itemBuilder: (context, index) {
-                            final sortedEntries = _history.entries.toList()
-                              ..sort((a, b) => b.key.compareTo(a.key));
-                            final entry = sortedEntries[index];
-                            final date = DateTime.parse(entry.key);
-                            final formattedDate = DateFormat('MMM dd, yyyy').format(date);
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'History',
+                            style: TextStyle(
+                              fontSize: 18 * fontScale,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          Container(
+                            height: 100,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: _history.isEmpty
+                                ? const Center(child: Text('No history yet'))
+                                : ListView.builder(
+                              key: ValueKey('history-list-$_animationKey'), // Unique key for history list
+                              padding: const EdgeInsets.all(8),
+                              itemCount: _history.length,
+                              itemBuilder: (context, index) {
+                                final sortedEntries = _history.entries.toList()
+                                  ..sort((a, b) => b.key.compareTo(a.key));
+                                final entry = sortedEntries[index];
+                                final date = DateTime.parse(entry.key);
+                                final formattedDate = DateFormat('MMM dd, yyyy').format(date);
 
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 2),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(formattedDate),
-                                  Text(
-                                    '${entry.value} taps',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.primary,
+                                return TweenAnimationBuilder<double>(
+                                  key: ValueKey('history-item-$index-$_animationKey'), // Staggered key
+                                  duration: Duration(milliseconds: 400 + (index * 80)),
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  curve: Curves.easeOut,
+                                  builder: (context, itemValue, child) {
+                                    return Transform.translate(
+                                      offset: Offset(0, 10 * (1 - itemValue)),
+                                      child: Transform.scale(
+                                        scale: itemValue,
+                                        child: Opacity(
+                                          opacity: itemValue,
+                                          child: child,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(formattedDate),
+                                        Text(
+                                          '${entry.value} taps',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

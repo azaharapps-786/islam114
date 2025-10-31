@@ -5,6 +5,7 @@ import 'package:haptic_feedback/haptic_feedback.dart';
 import 'dart:ui' as ui; // For better blur effects if needed
 
 // --- CORRECTED IMPORT PATHS ---
+import 'package:islam114/main.dart'; // Import for global RouteObserver from main.dart
 import '../../core/services/settings_service.dart';
 import '../widgets/home_feature_card.dart';
 import '../widgets/home_bottom_bar.dart';
@@ -16,17 +17,19 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+class _HomePageState extends State<HomePage> with TickerProviderStateMixin, RouteAware, WidgetsBindingObserver {
   late AnimationController _headerController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
   late Animation<double> _slideAnimation;
+  int _animationKey = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _headerController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 500), // Reduced from 1500ms for faster header animation
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -38,13 +41,56 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     _slideAnimation = Tween<double>(begin: -0.1, end: 0.0).animate(
       CurvedAnimation(parent: _headerController, curve: Curves.easeOut),
     );
-    _headerController.forward();
+    _restartAnimation();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Subscribe to the global RouteObserver instance.
+    final modalRoute = ModalRoute.of(context);
+    if (modalRoute is PageRoute) {
+      routeObserver.subscribe(this, modalRoute as PageRoute<dynamic>);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Trigger animation restart when app resumes from background.
+      _restartAnimation();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _headerController.dispose();
+    // Unsubscribe from the global RouteObserver to prevent memory leaks.
+    final modalRoute = ModalRoute.of(context);
+    if (modalRoute is PageRoute) {
+      routeObserver.unsubscribe(this);
+    }
     super.dispose();
+  }
+
+  // Restart the header animation and trigger a rebuild for card animations.
+  void _restartAnimation() {
+    _headerController.reset();
+    _headerController.forward();
+    _animationKey++;
+    // Force a rebuild to replay card animations via key changes and recreation.
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // Triggered when returning to this route (e.g., popping back from another page).
+    print('didPopNext called: Restarting HomePage animation'); // Debug log for verification.
+    _restartAnimation();
   }
 
   // Define the features for the grid
@@ -228,7 +274,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                               ),
                               // Subtle English translation below with delayed fade
                               TweenAnimationBuilder<double>(
-                                duration: const Duration(milliseconds: 2000),
+                                duration: const Duration(milliseconds: 1500), // Reduced from 2000ms for faster subtitle fade
                                 tween: Tween(begin: 0.0, end: 1.0),
                                 builder: (context, value, child) {
                                   return Opacity(
@@ -269,12 +315,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       // 3. Primary Features (Quran)
                       _buildSectionTitle('Holy Quran', fontScale, theme),
                       const SizedBox(height: 12),
-                      _buildFeatureGrid(_primaryFeatures, 3, fontScale, theme),
+                      _buildFeatureGrid(_primaryFeatures, 3, fontScale, theme, _animationKey),
                       const SizedBox(height: 32),
                       // 4. Secondary Features
                       _buildSectionTitle('Tools & More', fontScale, theme),
                       const SizedBox(height: 12),
-                      _buildFeatureGrid(_secondaryFeatures, 3, fontScale, theme),
+                      _buildFeatureGrid(_secondaryFeatures, 3, fontScale, theme, _animationKey),
                       const SizedBox(height: 32), // Padding for bottom bar
                     ],
                   ),
@@ -327,7 +373,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildFeatureGrid(List<Map<String, dynamic>> features,
-      int crossAxisCount, double fontScale, ThemeData theme) {
+      int crossAxisCount, double fontScale, ThemeData theme, int animationKey) {
     return LayoutBuilder(
       builder: (context, constraints) {
         // Calculate aspect ratio for a more square, visually appealing card
@@ -335,6 +381,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         if (aspectRatio < 0.85) aspectRatio = 0.85; // Ensure cards aren't too tall
 
         return GridView.builder(
+          key: ValueKey('grid-$animationKey'), // Unique key on GridView to force full recreation.
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -352,7 +399,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             final Map<String, dynamic>? params = feature['params'];
 
             return TweenAnimationBuilder<double>(
-              duration: Duration(milliseconds: 600 + (index * 100)), // Staggered entrance
+              key: ValueKey('card$index-$animationKey'), // Unique key to force recreation and animation restart.
+              duration: Duration(milliseconds: 400 + (index * 80)), // Reduced base from 600ms and stagger from 100ms for faster cards
               tween: Tween(begin: 0.0, end: 1.0),
               curve: Curves.easeOut,
               builder: (context, value, child) {

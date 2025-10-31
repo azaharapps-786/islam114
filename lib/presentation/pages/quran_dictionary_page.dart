@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:islam114/main.dart'; // Import for global RouteObserver from main.dart
 import '../../core/services/settings_service.dart';
 import '../../data/models/quran_dictionary_model.dart';
 import '../../data/services/quran_dictionary_service.dart';
@@ -18,7 +20,11 @@ class QuranDictionaryPage extends StatefulWidget {
   State<QuranDictionaryPage> createState() => _QuranDictionaryPageState();
 }
 
-class _QuranDictionaryPageState extends State<QuranDictionaryPage> {
+class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerProviderStateMixin, RouteAware, WidgetsBindingObserver {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  int _animationKey = 0; // Key to force recreation of animated elements
+
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   List<QuranDictionaryItem> _dictionaryItems = [];
@@ -35,16 +41,70 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _restartAnimation(); // Initialize animations
+
     _loadSettings();
     _loadDictionaryData();
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Subscribe to the global RouteObserver instance.
+    final modalRoute = ModalRoute.of(context);
+    if (modalRoute is PageRoute) {
+      routeObserver.subscribe(this, modalRoute as PageRoute<dynamic>);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Trigger animation restart when app resumes from background.
+      _restartAnimation();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _animationController.dispose();
     _searchController.dispose();
     _scrollController.dispose();
     _debounceTimer?.cancel();
+    // Unsubscribe from the global RouteObserver to prevent memory leaks.
+    final modalRoute = ModalRoute.of(context);
+    if (modalRoute is PageRoute) {
+      routeObserver.unsubscribe(this);
+    }
     super.dispose();
+  }
+
+  // Restart the page animations and trigger a rebuild for list items.
+  void _restartAnimation() {
+    _animationController.reset();
+    _animationController.forward();
+    _animationKey++;
+    // Force a rebuild to replay list animations via key changes.
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // Triggered when returning to this route (e.g., popping back from another page).
+    print('didPopNext called: Restarting QuranDictionaryPage animation'); // Debug log for verification.
+    _restartAnimation();
   }
 
   Future<void> _loadSettings() async {
@@ -253,204 +313,334 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> {
             ),
           ],
         ),
-        body: Column(
-          children: [
-            // Search bar
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: TextField(
-                controller: _searchController,
-                onChanged: _filterDictionary,
-                decoration: InputDecoration(
-                  hintText: 'Search for words, verses, or locations (e.g., 4:33:2)...',
-                  prefixIcon: _isSearching
-                      ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: Padding(
-                      padding: EdgeInsets.all(12.0),
-                      child: CircularProgressIndicator(strokeWidth: 2),
+        body: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Column(
+            children: [
+              // Search bar
+              TweenAnimationBuilder<double>(
+                key: ValueKey('search-bar-$_animationKey'),
+                duration: const Duration(milliseconds: 500),
+                tween: Tween(begin: 0.0, end: 1.0),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Transform.translate(
+                    offset: Offset(0, 20 * (1 - value)),
+                    child: Transform.scale(
+                      scale: value,
+                      child: Opacity(
+                        opacity: value,
+                        child: child,
+                      ),
                     ),
-                  )
-                      : const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      _filterDictionary('');
-                    },
-                  )
-                      : null,
-                  filled: true,
-                  fillColor: theme.cardColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    borderSide: BorderSide.none,
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _filterDictionary,
+                    decoration: InputDecoration(
+                      hintText: 'Search for words, verses, or locations (e.g., 4:33:2)...',
+                      prefixIcon: _isSearching
+                          ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                          : const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _filterDictionary('');
+                        },
+                      )
+                          : null,
+                      filled: true,
+                      fillColor: theme.cardColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.0),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            // Searching indicator
-            if (_isSearching)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          theme.colorScheme.primary,
+              // Searching indicator
+              if (_isSearching)
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('searching-indicator-$_animationKey'),
+                  duration: const Duration(milliseconds: 500),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Searching...',
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
-                        fontSize: 14 * settingsFontScale * _fontScale,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // Results count
-            if (_searchController.text.isNotEmpty && !_isSearching)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Row(
-                  children: [
-                    Text(
-                      '${_filteredItems.length} results found',
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
-                        fontSize: 14 * settingsFontScale * _fontScale,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_filteredItems.isNotEmpty)
-                      TextButton(
-                        onPressed: () {
-                          // Scroll to top
-                          _scrollController.animateTo(
-                            0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
-                        },
-                        child: Text(
-                          'Scroll to top',
-                          style: TextStyle(
-                            color: theme.colorScheme.primary,
-                            fontSize: 12 * settingsFontScale * _fontScale,
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              theme.colorScheme.primary,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-
-            // Error message
-            if (_errorMessage.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade100,
-                    borderRadius: BorderRadius.circular(8),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Searching...',
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                            fontSize: 14 * settingsFontScale * _fontScale,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.error, color: Colors.red.shade700),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Error',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red.shade700,
+                ),
+
+              // Results count
+              if (_searchController.text.isNotEmpty && !_isSearching)
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('results-count-$_animationKey'),
+                  duration: const Duration(milliseconds: 500),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Row(
+                      children: [
+                        Text(
+                          '${_filteredItems.length} results found',
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                            fontSize: 14 * settingsFontScale * _fontScale,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_filteredItems.isNotEmpty)
+                          TextButton(
+                            onPressed: () {
+                              // Scroll to top
+                              _scrollController.animateTo(
+                                0,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                              );
+                            },
+                            child: Text(
+                              'Scroll to top',
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontSize: 12 * settingsFontScale * _fontScale,
+                              ),
                             ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Error message
+              if (_errorMessage.isNotEmpty)
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('error-message-$_animationKey'),
+                  duration: const Duration(milliseconds: 600),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.error, color: Colors.red.shade700),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Error',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(_errorMessage),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            onPressed: _loadDictionaryData,
+                            child: const Text('Retry'),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(_errorMessage),
-                      const SizedBox(height: 8),
-                      ElevatedButton(
-                        onPressed: _loadDictionaryData,
-                        child: const Text('Retry'),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
 
-            // Dictionary list with smooth scrolling
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredItems.isEmpty
-                  ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.search_off,
-                      size: 64 * settingsFontScale * _fontScale,
-                      color: theme.colorScheme.onSurface.withOpacity(0.3),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No results found',
-                      style: TextStyle(
-                        fontSize: 18 * settingsFontScale * _fontScale,
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+              // Dictionary list with smooth scrolling
+              Expanded(
+                child: _isLoading
+                    ? TweenAnimationBuilder<double>(
+                  key: ValueKey('loading-dictionary-$_animationKey'),
+                  duration: const Duration(milliseconds: 600),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Try searching with different keywords',
-                      style: TextStyle(
-                        fontSize: 14 * settingsFontScale * _fontScale,
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    );
+                  },
+                  child: const Center(child: CircularProgressIndicator()),
+                )
+                    : _filteredItems.isEmpty
+                    ? TweenAnimationBuilder<double>(
+                  key: ValueKey('empty-results-$_animationKey'),
+                  duration: const Duration(milliseconds: 600),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: child,
+                        ),
                       ),
-                      textAlign: TextAlign.center,
+                    );
+                  },
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 64 * settingsFontScale * _fontScale,
+                          color: theme.colorScheme.onSurface.withOpacity(0.3),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No results found',
+                          style: TextStyle(
+                            fontSize: 18 * settingsFontScale * _fontScale,
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Try searching with different keywords',
+                          style: TextStyle(
+                            fontSize: 14 * settingsFontScale * _fontScale,
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                )
+                    : ListView.builder(
+                  key: ValueKey('dictionary-list-$_animationKey'), // Unique key for list recreation
+                  controller: _scrollController,
+                  // Use BouncingScrollPhysics for smooth, natural scrolling
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  // Enable cache extent for smoother scrolling
+                  cacheExtent: 500.0,
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: _filteredItems.length,
+                  // Use a more efficient item builder for large lists
+                  itemBuilder: (context, index) {
+                    // Use a key to help Flutter identify items
+                    return TweenAnimationBuilder<double>(
+                      key: ValueKey('dictionary-item-$index-$_animationKey'), // Staggered key
+                      duration: Duration(milliseconds: 400 + (index * 80)),
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      curve: Curves.easeOut,
+                      builder: (context, itemValue, child) {
+                        return Transform.translate(
+                          offset: Offset(0, 10 * (1 - itemValue)),
+                          child: Transform.scale(
+                            scale: itemValue,
+                            child: Opacity(
+                              opacity: itemValue,
+                              child: child,
+                            ),
+                          ),
+                        );
+                      },
+                      child: DictionaryItemCard(
+                        key: ValueKey(_filteredItems[index].id),
+                        item: _filteredItems[index],
+                        fontScale: settingsFontScale * _fontScale,
+                        readingMode: _readingMode,
+                      ),
+                    );
+                  },
                 ),
-              )
-                  : ListView.builder(
-                controller: _scrollController,
-                // Use BouncingScrollPhysics for smooth, natural scrolling
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                // Enable cache extent for smoother scrolling
-                cacheExtent: 500.0,
-                padding: const EdgeInsets.all(16.0),
-                itemCount: _filteredItems.length,
-                // Use a more efficient item builder for large lists
-                itemBuilder: (context, index) {
-                  // Use a key to help Flutter identify items
-                  return DictionaryItemCard(
-                    key: ValueKey(_filteredItems[index].id),
-                    item: _filteredItems[index],
-                    fontScale: settingsFontScale * _fontScale,
-                    readingMode: _readingMode,
-                  );
-                },
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

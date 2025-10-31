@@ -15,6 +15,9 @@ import 'presentation/pages/islamic_calendar_page.dart';
 import 'presentation/pages/more_options_page.dart';
 import 'presentation/pages/bukhari_hadith_page.dart';
 
+// Global RouteObserver instance for app-wide navigation awareness.
+final RouteObserver<PageRoute<dynamic>> routeObserver = RouteObserver<PageRoute<dynamic>>();
+
 void main() async {
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +66,7 @@ class Islam114App extends StatelessWidget {
             '/more': (context) => const MoreOptionsPage(),
             '/hadith': (context) => const BukhariHadithPage(),
           },
+          navigatorObservers: [routeObserver], // Registers the observer for route change detection.
           onGenerateRoute: (settings) {
             // Handle routes with arguments
             if (settings.name != null) {
