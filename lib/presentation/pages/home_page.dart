@@ -1,11 +1,10 @@
 // lib/presentation/pages/home_page.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Import for HapticFeedback
 import 'package:provider/provider.dart';
-import 'package:haptic_feedback/haptic_feedback.dart';
-import 'dart:ui' as ui; // For better blur effects if needed
+import 'dart:ui' as ui;
 
-// --- CORRECTED IMPORT PATHS ---
-import 'package:islam114/main.dart'; // Import for global RouteObserver from main.dart
+import 'package:islam114/main.dart';
 import '../../core/services/settings_service.dart';
 import '../widgets/home_feature_card.dart';
 import '../widgets/home_bottom_bar.dart';
@@ -29,7 +28,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _headerController = AnimationController(
-      duration: const Duration(milliseconds: 500), // Reduced from 1500ms for faster header animation
+      duration: const Duration(milliseconds: 500),
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -47,7 +46,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Subscribe to the global RouteObserver instance.
     final modalRoute = ModalRoute.of(context);
     if (modalRoute is PageRoute) {
       routeObserver.subscribe(this, modalRoute as PageRoute<dynamic>);
@@ -58,7 +56,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Trigger animation restart when app resumes from background.
       _restartAnimation();
     }
   }
@@ -67,7 +64,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _headerController.dispose();
-    // Unsubscribe from the global RouteObserver to prevent memory leaks.
     final modalRoute = ModalRoute.of(context);
     if (modalRoute is PageRoute) {
       routeObserver.unsubscribe(this);
@@ -75,12 +71,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     super.dispose();
   }
 
-  // Restart the header animation and trigger a rebuild for card animations.
   void _restartAnimation() {
     _headerController.reset();
     _headerController.forward();
     _animationKey++;
-    // Force a rebuild to replay card animations via key changes and recreation.
     if (mounted) {
       setState(() {});
     }
@@ -88,12 +82,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
 
   @override
   void didPopNext() {
-    // Triggered when returning to this route (e.g., popping back from another page).
-    print('didPopNext called: Restarting HomePage animation'); // Debug log for verification.
+    print('didPopNext called: Restarting HomePage animation');
     _restartAnimation();
   }
 
-  // Define the features for the grid
   final List<Map<String, dynamic>> _primaryFeatures = [
     {
       'title': 'অসমীয়া কোৰআন',
@@ -193,16 +185,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
 
   @override
   Widget build(BuildContext context) {
-    // This makes the font scale available to all text widgets below
     final double fontScale = Provider.of<SettingsService>(context).fontScale;
     final theme = Theme.of(context);
-
-    // Get screen size for responsive adjustments
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenHeight < 700 || screenWidth < 360;
-
-    // Calculate responsive font sizes
     final mainTextSize = isSmallScreen ? 24.0 : 32.0;
     final headerPadding = isSmallScreen ? 12.0 : 16.0;
 
@@ -222,7 +209,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
           ),
           child: Column(
             children: [
-              // 1. Enhanced Arabic Text Header with Built-in Animations
+              // Header with animation
               AnimatedBuilder(
                 animation: _headerController,
                 builder: (context, child) {
@@ -255,7 +242,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                           ),
                           child: Column(
                             children: [
-                              // Animated Arabic Shahada with Fade and Scale
                               Center(
                                 child: FittedBox(
                                   fit: BoxFit.scaleDown,
@@ -272,9 +258,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                                   ),
                                 ),
                               ),
-                              // Subtle English translation below with delayed fade
                               TweenAnimationBuilder<double>(
-                                duration: const Duration(milliseconds: 1500), // Reduced from 2000ms for faster subtitle fade
+                                duration: const Duration(milliseconds: 1500),
                                 tween: Tween(begin: 0.0, end: 1.0),
                                 builder: (context, value, child) {
                                   return Opacity(
@@ -304,24 +289,23 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                   );
                 },
               ),
-              // 2. Main Content
+              // Main Content
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 8.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // 3. Primary Features (Quran)
+                      // Primary Features (Quran)
                       _buildSectionTitle('Holy Quran', fontScale, theme),
                       const SizedBox(height: 12),
                       _buildFeatureGrid(_primaryFeatures, 3, fontScale, theme, _animationKey),
                       const SizedBox(height: 32),
-                      // 4. Secondary Features
+                      // Secondary Features
                       _buildSectionTitle('Tools & More', fontScale, theme),
                       const SizedBox(height: 12),
                       _buildFeatureGrid(_secondaryFeatures, 3, fontScale, theme, _animationKey),
-                      const SizedBox(height: 32), // Padding for bottom bar
+                      const SizedBox(height: 32),
                     ],
                   ),
                 ),
@@ -330,7 +314,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
           ),
         ),
       ),
-      // 5. Bottom Bar
       bottomNavigationBar: const HomeBottomBar(),
     );
   }
@@ -376,12 +359,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
       int crossAxisCount, double fontScale, ThemeData theme, int animationKey) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Calculate aspect ratio for a more square, visually appealing card
         double aspectRatio = (constraints.maxWidth / crossAxisCount) / 140;
-        if (aspectRatio < 0.85) aspectRatio = 0.85; // Ensure cards aren't too tall
+        if (aspectRatio < 0.85) aspectRatio = 0.85;
 
         return GridView.builder(
-          key: ValueKey('grid-$animationKey'), // Unique key on GridView to force full recreation.
+          key: ValueKey('grid-$animationKey'),
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -393,14 +375,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
           itemCount: features.length,
           itemBuilder: (context, index) {
             final feature = features[index];
-
-            // FIX: Create local variables to capture the correct values for the onTap callback
             final String route = feature['route'];
             final Map<String, dynamic>? params = feature['params'];
 
             return TweenAnimationBuilder<double>(
-              key: ValueKey('card$index-$animationKey'), // Unique key to force recreation and animation restart.
-              duration: Duration(milliseconds: 400 + (index * 80)), // Reduced base from 600ms and stagger from 100ms for faster cards
+              key: ValueKey('card$index-$animationKey'),
+              duration: Duration(milliseconds: 400 + (index * 80)),
               tween: Tween(begin: 0.0, end: 1.0),
               curve: Curves.easeOut,
               builder: (context, value, child) {
@@ -410,13 +390,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                     scale: value,
                     child: Opacity(
                       opacity: value,
-                      child: HomeFeatureCard(
+                      child: _PressableCard(
                         title: feature['title'],
                         iconPath: feature['icon'],
                         emojiIcon: feature['emoji'],
                         onTap: () {
-                          //HapticFeedback.medium(HapticFeedbackType.selection); // Enhanced haptic
-                          // Optional: Add a micro-animation or snackbar feedback here
+                          HapticFeedback.lightImpact(); // Using Flutter's built-in haptic feedback
                           Navigator.pushNamed(context, route, arguments: params);
                         },
                       ),
@@ -428,6 +407,91 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
           },
         );
       },
+    );
+  }
+}
+
+// Custom pressable card widget with press effect
+class _PressableCard extends StatefulWidget {
+  final String title;
+  final String? iconPath;
+  final String emojiIcon;
+  final VoidCallback onTap;
+
+  const _PressableCard({
+    required this.title,
+    this.iconPath,
+    required this.emojiIcon,
+    required this.onTap,
+  });
+
+  @override
+  State<_PressableCard> createState() => _PressableCardState();
+}
+
+class _PressableCardState extends State<_PressableCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.95,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onTapDown(TapDownDetails details) {
+    _controller.forward();
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    _controller.reverse();
+  }
+
+  void _onTapCancel() {
+    _controller.reverse();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fontScale = Provider.of<SettingsService>(context).fontScale;
+
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      onTap: widget.onTap,
+      child: AnimatedBuilder(
+        animation: _scaleAnimation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _scaleAnimation.value,
+            child: HomeFeatureCard(
+              title: widget.title,
+              iconPath: widget.iconPath,
+              emojiIcon: widget.emojiIcon,
+              onTap: widget.onTap,
+            ),
+          );
+        },
+      ),
     );
   }
 }

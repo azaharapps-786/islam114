@@ -25,9 +25,9 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
   late AnimationController _animationController;
   late AnimationController _cardAnimationController;
   late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
   late Animation<double> _gregorianCardAnimation;
   late Animation<double> _hijriCardAnimation;
-  int _animationKey = 0; // Key to force recreation of animated elements
 
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
@@ -49,18 +49,24 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 500), // Reduced from 800ms
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
-        curve: Curves.easeInOut,
+        curve: Curves.easeOut,
+      ),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.elasticOut,
       ),
     );
 
     _cardAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 200), // Reduced from 300ms
+      duration: const Duration(milliseconds: 200),
       vsync: this,
     );
 
@@ -78,7 +84,7 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
       ),
     );
 
-    _restartAnimation(); // Initialize animations
+    _animationController.forward();
 
     _initialize();
   }
@@ -98,7 +104,8 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       // Trigger animation restart when app resumes from background.
-      _restartAnimation();
+      _animationController.reset();
+      _animationController.forward();
     }
   }
 
@@ -115,22 +122,11 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
     super.dispose();
   }
 
-  // Restart the page animations and trigger a rebuild for list items.
-  void _restartAnimation() {
-    _animationController.reset();
-    _animationController.forward();
-    _animationKey++;
-    // Force a rebuild to replay list animations via key changes.
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
   @override
   void didPopNext() {
     // Triggered when returning to this route (e.g., popping back from another page).
-    print('didPopNext called: Restarting IslamicCalendarPage animation'); // Debug log for verification.
-    _restartAnimation();
+    _animationController.reset();
+    _animationController.forward();
   }
 
   Future<void> _initialize() async {
@@ -263,7 +259,7 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
   void _switchToGregorianView() {
     if (_isHijriView) {
       _cardAnimationController.forward();
-      Future.delayed(const Duration(milliseconds: 100), () { // Reduced from 150ms
+      Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
           setState(() {
             _isHijriView = false;
@@ -277,7 +273,7 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
   void _switchToHijriView() {
     if (!_isHijriView) {
       _cardAnimationController.forward();
-      Future.delayed(const Duration(milliseconds: 100), () { // Reduced from 150ms
+      Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
           setState(() {
             _isHijriView = true;
@@ -352,11 +348,14 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
         ],
       ),
       body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: _isHijriView
-              ? _buildHijriCalendarView(fontScale, theme, _animationKey)
-              : _buildGregorianCalendarView(fontScale, theme, _animationKey),
+        child: ScaleTransition(
+          scale: _scaleAnimation,
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: _isHijriView
+                ? _buildHijriCalendarView(fontScale, theme)
+                : _buildGregorianCalendarView(fontScale, theme),
+          ),
         ),
       ),
     );
@@ -399,225 +398,135 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
     );
   }
 
-  Widget _buildGregorianCalendarView(double fontScale, ThemeData theme, int animationKey) {
-    return TweenAnimationBuilder<double>(
-      key: ValueKey('gregorian-view-$animationKey'),
-      duration: const Duration(milliseconds: 400), // Reduced from 600ms
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.easeOut,
-      builder: (context, value, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: Transform.scale(
-            scale: value,
-            child: Opacity(
-              opacity: value,
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: Column(
-        children: [
-          // Clickable Date display cards
-          _buildDateCards(fontScale, theme, animationKey),
+  Widget _buildGregorianCalendarView(double fontScale, ThemeData theme) {
+    return Column(
+      children: [
+        // Clickable Date display cards
+        _buildDateCards(fontScale, theme),
 
-          // Calendar
-          TweenAnimationBuilder<double>(
-            key: ValueKey('gregorian-calendar-$animationKey'),
-            duration: const Duration(milliseconds: 450), // Reduced from 700ms
-            tween: Tween(begin: 0.0, end: 1.0),
-            curve: Curves.easeOut,
-            builder: (context, value, child) {
-              return Transform.translate(
-                offset: Offset(0, 20 * (1 - value)),
-                child: Transform.scale(
-                  scale: value,
-                  child: Opacity(
-                    opacity: value,
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: _buildTableCalendar(fontScale, theme, animationKey),
-          ),
+        // Calendar
+        _buildTableCalendar(fontScale, theme),
 
-          const SizedBox(height: 8),
+        const SizedBox(height: 8),
 
-          // Events list
-          Expanded(
-            child: _buildEventsList(fontScale, theme, animationKey),
-          ),
-        ],
-      ),
+        // Events list
+        Expanded(
+          child: _buildEventsList(fontScale, theme),
+        ),
+      ],
     );
   }
 
-  Widget _buildHijriCalendarView(double fontScale, ThemeData theme, int animationKey) {
-    return TweenAnimationBuilder<double>(
-      key: ValueKey('hijri-view-$animationKey'),
-      duration: const Duration(milliseconds: 400), // Reduced from 600ms
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.easeOut,
-      builder: (context, value, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: Transform.scale(
-            scale: value,
-            child: Opacity(
-              opacity: value,
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: Column(
-        children: [
-          // Clickable Date display cards
-          _buildDateCards(fontScale, theme, animationKey),
+  Widget _buildHijriCalendarView(double fontScale, ThemeData theme) {
+    return Column(
+      children: [
+        // Clickable Date display cards
+        _buildDateCards(fontScale, theme),
 
-          // Hijri Calendar
-          Expanded(
-            child: Column(
-              children: [
-                // Hijri Calendar Widget
-                Expanded(
-                  flex: 2,
-                  child: TweenAnimationBuilder<double>(
-                    key: ValueKey('hijri-calendar-$animationKey'),
-                    duration: const Duration(milliseconds: 450), // Reduced from 700ms
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    curve: Curves.easeOut,
-                    builder: (context, value, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 20 * (1 - value)),
-                        child: Transform.scale(
-                          scale: value,
-                          child: Opacity(
-                            opacity: value,
-                            child: child,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.all(16.0),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+        // Hijri Calendar
+        Expanded(
+          child: Column(
+            children: [
+              // Hijri Calendar Widget
+              Expanded(
+                flex: 2,
+                child: Container(
+                  margin: const EdgeInsets.all(16.0),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
-                      child: HijriCalendarWidget(
-                        initialDate: _hijriDate,
-                        onDateSelected: _onHijriDaySelected,
-                        events: _events,
-                        calculationMethod: _calculationMethod,
-                        fontScale: fontScale,
-                        calendarFormat: _hijriCalendarFormat,
-                        onFormatChanged: _onHijriFormatChanged,
-                      ),
-                    ),
+                    ],
+                  ),
+                  child: HijriCalendarWidget(
+                    initialDate: _hijriDate,
+                    onDateSelected: _onHijriDaySelected,
+                    events: _events,
+                    calculationMethod: _calculationMethod,
+                    fontScale: fontScale,
+                    calendarFormat: _hijriCalendarFormat,
+                    onFormatChanged: _onHijriFormatChanged,
                   ),
                 ),
+              ),
 
-                // Selected day events
-                Expanded(
-                  flex: 1,
-                  child: _buildEventsList(fontScale, theme, animationKey),
-                ),
-              ],
-            ),
+              // Selected day events
+              Expanded(
+                flex: 1,
+                child: _buildEventsList(fontScale, theme),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   // Updated: Unified date cards with adaptive text scaling
-  Widget _buildDateCards(double fontScale, ThemeData theme, int animationKey) {
-    return TweenAnimationBuilder<double>(
-      key: ValueKey('date-cards-$animationKey'),
-      duration: const Duration(milliseconds: 300), // Reduced from 500ms
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.easeOut,
-      builder: (context, value, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: Transform.scale(
-            scale: value,
-            child: Opacity(
-              opacity: value,
-              child: child,
+  Widget _buildDateCards(double fontScale, ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.all(16.0),
+      child: Row(
+        children: [
+          // Gregorian date card - Clickable
+          Expanded(
+            child: AnimatedBuilder(
+              animation: _isHijriView ? _gregorianCardAnimation : _hijriCardAnimation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _isHijriView ? _gregorianCardAnimation.value : 1.0,
+                  child: InkWell(
+                    onTap: _switchToGregorianView,
+                    borderRadius: BorderRadius.circular(16),
+                    child: _buildDateCard(
+                      title: 'Gregorian',
+                      day: _selectedDay.day.toString(),
+                      monthYear: intl.DateFormat('MMM yyyy').format(_selectedDay),
+                      dayName: intl.DateFormat('EEEE').format(_selectedDay),
+                      color: theme.colorScheme.primary,
+                      fontScale: fontScale,
+                      theme: theme,
+                      isActive: !_isHijriView,
+                      isHijri: false,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            // Gregorian date card - Clickable
-            Expanded(
-              child: AnimatedBuilder(
-                animation: _isHijriView ? _gregorianCardAnimation : _hijriCardAnimation,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _isHijriView ? _gregorianCardAnimation.value : 1.0,
-                    child: InkWell(
-                      onTap: _switchToGregorianView,
-                      borderRadius: BorderRadius.circular(16),
-                      child: _buildDateCard(
-                        title: 'Gregorian',
-                        day: _selectedDay.day.toString(),
-                        monthYear: intl.DateFormat('MMM yyyy').format(_selectedDay),
-                        dayName: intl.DateFormat('EEEE').format(_selectedDay),
-                        color: theme.colorScheme.primary,
-                        fontScale: fontScale,
-                        theme: theme,
-                        isActive: !_isHijriView,
-                        isHijri: false,
-                      ),
+          const SizedBox(width: 12),
+          // Hijri date card - Clickable
+          Expanded(
+            child: AnimatedBuilder(
+              animation: _isHijriView ? _hijriCardAnimation : _gregorianCardAnimation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _isHijriView ? 1.0 : _gregorianCardAnimation.value,
+                  child: InkWell(
+                    onTap: _switchToHijriView,
+                    borderRadius: BorderRadius.circular(16),
+                    child: _buildDateCard(
+                      title: 'Hijri',
+                      day: _hijriDate.hDay.toString(),
+                      monthYear: IslamicEventProvider.hijriMonthNames[_hijriDate.hMonth - 1],
+                      dayName: '${_hijriDate.hYear} AH',
+                      color: theme.colorScheme.secondary,
+                      fontScale: fontScale,
+                      theme: theme,
+                      isActive: _isHijriView,
+                      isHijri: true,
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
-            const SizedBox(width: 12),
-            // Hijri date card - Clickable
-            Expanded(
-              child: AnimatedBuilder(
-                animation: _isHijriView ? _hijriCardAnimation : _gregorianCardAnimation,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _isHijriView ? 1.0 : _gregorianCardAnimation.value,
-                    child: InkWell(
-                      onTap: _switchToHijriView,
-                      borderRadius: BorderRadius.circular(16),
-                      child: _buildDateCard(
-                        title: 'Hijri',
-                        day: _hijriDate.hDay.toString(),
-                        monthYear: IslamicEventProvider.hijriMonthNames[_hijriDate.hMonth - 1],
-                        dayName: '${_hijriDate.hYear} AH',
-                        color: theme.colorScheme.secondary,
-                        fontScale: fontScale,
-                        theme: theme,
-                        isActive: _isHijriView,
-                        isHijri: true,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -766,325 +675,236 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
     );
   }
 
-  Widget _buildTableCalendar(double fontScale, ThemeData theme, int animationKey) {
-    return TweenAnimationBuilder<double>(
-      key: ValueKey('table-calendar-$animationKey'),
-      duration: const Duration(milliseconds: 450), // Reduced from 700ms
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.easeOut,
-      builder: (context, value, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: Transform.scale(
-            scale: value,
-            child: Opacity(
-              opacity: value,
-              child: child,
-            ),
+  Widget _buildTableCalendar(double fontScale, ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16.0),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: TableCalendar<IslamicEvent>(
-          key: ValueKey('table-calendar-content-$animationKey'), // Key for calendar content
-          firstDay: DateTime.utc(2020, 1, 1),
-          lastDay: DateTime.utc(2030, 12, 31),
-          focusedDay: _focusedDay,
-          selectedDayPredicate: (day) {
-            return isSameDay(_selectedDay, day);
-          },
-          calendarFormat: _calendarFormat,
-          eventLoader: (day) {
-            final normalized = DateTime.utc(day.year, day.month, day.day);
-            return _events[normalized] ?? [];
-          },
-          startingDayOfWeek: StartingDayOfWeek.sunday,
-          onDaySelected: _onDaySelected,
-          onFormatChanged: (format) {
-            setState(() {
-              _calendarFormat = format;
-            });
-          },
-          onPageChanged: (focusedDay) {
-            setState(() {
-              _focusedDay = focusedDay;
-            });
-          },
-          calendarStyle: CalendarStyle(
-            outsideDaysVisible: true,
-            weekendTextStyle: TextStyle(
-              color: theme.colorScheme.error,
-              fontSize: 14 * fontScale,
-            ),
-            defaultTextStyle: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 14 * fontScale,
-            ),
-            selectedTextStyle: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-            todayTextStyle: TextStyle(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.bold,
-              fontSize: 14 * fontScale,
-            ),
-            selectedDecoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: theme.colorScheme.primary,
-              boxShadow: [
-                BoxShadow(
-                  color: theme.colorScheme.primary.withOpacity(0.4),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            todayDecoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: theme.colorScheme.primary,
-                width: 2,
+        ],
+      ),
+      child: TableCalendar<IslamicEvent>(
+        firstDay: DateTime.utc(2020, 1, 1),
+        lastDay: DateTime.utc(2030, 12, 31),
+        focusedDay: _focusedDay,
+        selectedDayPredicate: (day) {
+          return isSameDay(_selectedDay, day);
+        },
+        calendarFormat: _calendarFormat,
+        eventLoader: (day) {
+          final normalized = DateTime.utc(day.year, day.month, day.day);
+          return _events[normalized] ?? [];
+        },
+        startingDayOfWeek: StartingDayOfWeek.sunday,
+        onDaySelected: _onDaySelected,
+        onFormatChanged: (format) {
+          setState(() {
+            _calendarFormat = format;
+          });
+        },
+        onPageChanged: (focusedDay) {
+          setState(() {
+            _focusedDay = focusedDay;
+          });
+        },
+        calendarStyle: CalendarStyle(
+          outsideDaysVisible: true,
+          weekendTextStyle: TextStyle(
+            color: theme.colorScheme.error,
+            fontSize: 14 * fontScale,
+          ),
+          defaultTextStyle: TextStyle(
+            color: theme.colorScheme.onSurface,
+            fontSize: 14 * fontScale,
+          ),
+          selectedTextStyle: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+          todayTextStyle: TextStyle(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.bold,
+            fontSize: 14 * fontScale,
+          ),
+          selectedDecoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: theme.colorScheme.primary,
+            boxShadow: [
+              BoxShadow(
+                color: theme.colorScheme.primary.withOpacity(0.4),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              color: Colors.transparent,
-            ),
-            markerDecoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: theme.colorScheme.secondary,
-            ),
-            markersMaxCount: 3,
+            ],
           ),
-          headerStyle: HeaderStyle(
-            formatButtonVisible: true,
-            formatButtonDecoration: BoxDecoration(
+          todayDecoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
               color: theme.colorScheme.primary,
-              borderRadius: BorderRadius.circular(12),
+              width: 2,
             ),
-            formatButtonTextStyle: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
-            formatButtonPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 6,
-            ),
-            titleCentered: true,
-            titleTextStyle: TextStyle(
-              fontSize: 16 * fontScale,
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.onSurface,
-            ),
-            leftChevronIcon: Icon(
-              Icons.chevron_left,
-              color: theme.colorScheme.primary,
-            ),
-            rightChevronIcon: Icon(
-              Icons.chevron_right,
-              color: theme.colorScheme.primary,
-            ),
-            headerPadding: const EdgeInsets.symmetric(vertical: 8.0),
+            color: Colors.transparent,
           ),
-          daysOfWeekStyle: DaysOfWeekStyle(
-            weekdayStyle: TextStyle(
-              fontSize: 13 * fontScale,
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
-            ),
-            weekendStyle: TextStyle(
-              fontSize: 13 * fontScale,
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.error.withOpacity(0.7),
-            ),
-            dowTextFormatter: (date, locale) {
-              // Use short day names to ensure they fit properly
-              switch (date.weekday) {
-                case 1:
-                  return 'Mon';
-                case 2:
-                  return 'Tue';
-                case 3:
-                  return 'Wed';
-                case 4:
-                  return 'Thu';
-                case 5:
-                  return 'Fri';
-                case 6:
-                  return 'Sat';
-                case 7:
-                  return 'Sun';
-                default:
-                  return '';
-              }
-            },
+          markerDecoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: theme.colorScheme.secondary,
           ),
-          calendarBuilders: CalendarBuilders(
-            dowBuilder: (context, day) {
-              // Custom day of week builder to ensure proper spacing
-              return Center(
-                child: Text(
-                  intl.DateFormat.E().format(day),
-                  style: TextStyle(
-                    fontSize: 11 * fontScale,
-                    fontWeight: FontWeight.w600,
-                    color: day.weekday == DateTime.sunday || day.weekday == DateTime.saturday
-                        ? theme.colorScheme.error.withOpacity(0.7)
-                        : theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
+          markersMaxCount: 3,
+        ),
+        headerStyle: HeaderStyle(
+          formatButtonVisible: true,
+          formatButtonDecoration: BoxDecoration(
+            color: theme.colorScheme.primary,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          formatButtonTextStyle: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+          formatButtonPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 6,
+          ),
+          titleCentered: true,
+          titleTextStyle: TextStyle(
+            fontSize: 16 * fontScale,
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+          leftChevronIcon: Icon(
+            Icons.chevron_left,
+            color: theme.colorScheme.primary,
+          ),
+          rightChevronIcon: Icon(
+            Icons.chevron_right,
+            color: theme.colorScheme.primary,
+          ),
+          headerPadding: const EdgeInsets.symmetric(vertical: 8.0),
+        ),
+        daysOfWeekStyle: DaysOfWeekStyle(
+          weekdayStyle: TextStyle(
+            fontSize: 13 * fontScale,
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.onSurface.withOpacity(0.7),
+          ),
+          weekendStyle: TextStyle(
+            fontSize: 13 * fontScale,
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.error.withOpacity(0.7),
+          ),
+          dowTextFormatter: (date, locale) {
+            // Use short day names to ensure they fit properly
+            switch (date.weekday) {
+              case 1:
+                return 'Mon';
+              case 2:
+                return 'Tue';
+              case 3:
+                return 'Wed';
+              case 4:
+                return 'Thu';
+              case 5:
+                return 'Fri';
+              case 6:
+                return 'Sat';
+              case 7:
+                return 'Sun';
+              default:
+                return '';
+            }
+          },
+        ),
+        calendarBuilders: CalendarBuilders(
+          dowBuilder: (context, day) {
+            // Custom day of week builder to ensure proper spacing
+            return Center(
+              child: Text(
+                intl.DateFormat.E().format(day),
+                style: TextStyle(
+                  fontSize: 11 * fontScale,
+                  fontWeight: FontWeight.w600,
+                  color: day.weekday == DateTime.sunday || day.weekday == DateTime.saturday
+                      ? theme.colorScheme.error.withOpacity(0.7)
+                      : theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildEventsList(double fontScale, ThemeData theme, int animationKey) {
+  Widget _buildEventsList(double fontScale, ThemeData theme) {
     if (_isLoading) {
-      return TweenAnimationBuilder<double>(
-        key: ValueKey('loading-events-$animationKey'),
-        duration: const Duration(milliseconds: 400), // Reduced from 600ms
-        tween: Tween(begin: 0.0, end: 1.0),
-        curve: Curves.easeOut,
-        builder: (context, value, child) {
-          return Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: Transform.scale(
-              scale: value,
-              child: Opacity(
-                opacity: value,
-                child: child,
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Loading events...',
+              style: TextStyle(
+                fontSize: 14 * fontScale,
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
               ),
             ),
-          );
-        },
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Loading events...',
-                style: TextStyle(
-                  fontSize: 14 * fontScale,
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       );
     }
 
     return CustomScrollView(
-      key: ValueKey('events-scroll-$animationKey'), // Key for scroll view recreation
       slivers: [
         // Upcoming Events Section
         if (_upcomingEvents.isNotEmpty) ...[
           SliverToBoxAdapter(
-            child: TweenAnimationBuilder<double>(
-              key: ValueKey('upcoming-header-$animationKey'),
-              duration: const Duration(milliseconds: 300), // Reduced from 500ms
-              tween: Tween(begin: 0.0, end: 1.0),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Transform.translate(
-                  offset: Offset(0, 20 * (1 - value)),
-                  child: Transform.scale(
-                    scale: value,
-                    child: Opacity(
-                      opacity: value,
-                      child: child,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.upcoming,
+                    color: theme.colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Upcoming Events',
+                    style: TextStyle(
+                      fontSize: 18 * fontScale,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
-                );
-              },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.upcoming,
-                      color: theme.colorScheme.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Upcoming Events',
-                      style: TextStyle(
-                        fontSize: 18 * fontScale,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
             ),
           ),
           SliverToBoxAdapter(
-            child: TweenAnimationBuilder<double>(
-              key: ValueKey('upcoming-carousel-$animationKey'),
-              duration: const Duration(milliseconds: 400), // Reduced from 600ms
-              tween: Tween(begin: 0.0, end: 1.0),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Transform.translate(
-                  offset: Offset(0, 20 * (1 - value)),
-                  child: Transform.scale(
-                    scale: value,
-                    child: Opacity(
-                      opacity: value,
-                      child: child,
-                    ),
-                  ),
-                );
-              },
-              child: SizedBox(
-                height: 150,
-                child: ListView.builder(
-                  key: ValueKey('upcoming-list-$_animationKey'), // Key for list recreation
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _upcomingEvents.length > 5 ? 5 : _upcomingEvents.length,
-                  itemBuilder: (context, index) {
-                    final event = _upcomingEvents[index];
-                    return TweenAnimationBuilder<double>(
-                      key: ValueKey('upcoming-item-$index-$_animationKey'), // Staggered key
-                      duration: Duration(milliseconds: 250 + (index * 50)), // Reduced from 400 + index*80
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      curve: Curves.easeOut,
-                      builder: (context, itemValue, child) {
-                        return Transform.translate(
-                          offset: Offset(10 * (1 - itemValue), 0),
-                          child: Transform.scale(
-                            scale: itemValue,
-                            child: Opacity(
-                              opacity: itemValue,
-                              child: child,
-                            ),
-                          ),
-                        );
-                      },
-                      child: _buildUpcomingEventCard(event, fontScale, theme),
-                    );
-                  },
-                ),
+            child: SizedBox(
+              height: 150,
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                scrollDirection: Axis.horizontal,
+                itemCount: _upcomingEvents.length > 5 ? 5 : _upcomingEvents.length,
+                itemBuilder: (context, index) {
+                  final event = _upcomingEvents[index];
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                    child: _buildUpcomingEventCard(event, fontScale, theme),
+                  );
+                },
               ),
             ),
           ),
@@ -1093,47 +913,29 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
 
         // Selected Day Events Header
         SliverToBoxAdapter(
-          child: TweenAnimationBuilder<double>(
-            key: ValueKey('events-header-$animationKey'),
-            duration: const Duration(milliseconds: 300), // Reduced from 500ms
-            tween: Tween(begin: 0.0, end: 1.0),
-            curve: Curves.easeOut,
-            builder: (context, value, child) {
-              return Transform.translate(
-                offset: Offset(0, 20 * (1 - value)),
-                child: Transform.scale(
-                  scale: value,
-                  child: Opacity(
-                    opacity: value,
-                    child: child,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.event,
+                  color: theme.colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Events on ${intl.DateFormat('MMM d').format(_selectedDay)}',
+                    style: TextStyle(
+                      fontSize: 18 * fontScale,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.event,
-                    color: theme.colorScheme.primary,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Events on ${intl.DateFormat('MMM d').format(_selectedDay)}',
-                      style: TextStyle(
-                        fontSize: 18 * fontScale,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
           ),
         ),
@@ -1141,42 +943,24 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
         // Selected Day Events List
         if (_selectedEvents.isEmpty)
           SliverFillRemaining(
-            child: TweenAnimationBuilder<double>(
-              key: ValueKey('empty-events-$animationKey'),
-              duration: const Duration(milliseconds: 400), // Reduced from 600ms
-              tween: Tween(begin: 0.0, end: 1.0),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Transform.translate(
-                  offset: Offset(0, 20 * (1 - value)),
-                  child: Transform.scale(
-                    scale: value,
-                    child: Opacity(
-                      opacity: value,
-                      child: child,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.event_busy,
+                    size: 64,
+                    color: theme.colorScheme.onSurface.withOpacity(0.3),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No events on this day',
+                    style: TextStyle(
+                      fontSize: 16 * fontScale,
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
                     ),
                   ),
-                );
-              },
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.event_busy,
-                      size: 64,
-                      color: theme.colorScheme.onSurface.withOpacity(0.3),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No events on this day',
-                      style: TextStyle(
-                        fontSize: 16 * fontScale,
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
             ),
           )
@@ -1184,26 +968,11 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage>
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             sliver: SliverList(
-              key: ValueKey('events-list-$_animationKey'), // Key for list recreation
               delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                  return TweenAnimationBuilder<double>(
-                    key: ValueKey('event-item-$index-$_animationKey'), // Staggered key
-                    duration: Duration(milliseconds: 250 + (index * 50)), // Reduced from 400 + index*80
-                    tween: Tween(begin: 0.0, end: 1.0),
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
                     curve: Curves.easeOut,
-                    builder: (context, itemValue, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 10 * (1 - itemValue)),
-                        child: Transform.scale(
-                          scale: itemValue,
-                          child: Opacity(
-                            opacity: itemValue,
-                            child: child,
-                          ),
-                        ),
-                      );
-                    },
                     child: IslamicEventCard(
                       event: _selectedEvents[index],
                       fontScale: fontScale,

@@ -141,110 +141,124 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
             ),
             elevation: 16,
             insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.85,
-                maxHeight: MediaQuery.of(context).size.height * 0.7,
-              ),
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.language,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 28,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Select Language',
-                        style: TextStyle(
-                          fontSize: 22 * fontScale,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                    ],
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: 0.9 + (value * 0.1), // Scale from 0.9 to 1.0 for subtle growth
+                  child: Opacity(
+                    opacity: value, // Fade from 0.0 to 1.0
+                    child: child,
                   ),
-                  const SizedBox(height: 24),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildLanguageOption(
-                            context: context,
-                            language: 'English',
-                            route: route,
-                            title: title,
-                            fontScale: fontScale,
-                            isAvailable: true,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildLanguageOption(
-                            context: context,
-                            language: 'Assamese',
-                            route: route,
-                            title: title,
-                            fontScale: fontScale,
-                            isAvailable: true,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildLanguageOption(
-                            context: context,
-                            language: 'Hindi',
-                            route: route,
-                            title: title,
-                            fontScale: fontScale,
-                            isAvailable: true,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildLanguageOption(
-                            context: context,
-                            language: 'Bengali',
-                            route: route,
-                            title: title,
-                            fontScale: fontScale,
-                            isAvailable: true,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildLanguageOption(
-                            context: context,
-                            language: 'More Languages',
-                            route: route,
-                            title: title,
-                            fontScale: fontScale,
-                            isAvailable: false,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        'Cancel',
-                        style: TextStyle(
-                          fontSize: 16 * fontScale,
-                          fontWeight: FontWeight.w600,
+                );
+              },
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.85,
+                  maxHeight: MediaQuery.of(context).size.height * 0.7,
+                ),
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.language,
                           color: Theme.of(context).colorScheme.primary,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Select Language',
+                          style: TextStyle(
+                            fontSize: 22 * fontScale,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildLanguageOption(
+                              context: context,
+                              language: 'English',
+                              route: route,
+                              title: title,
+                              fontScale: fontScale,
+                              isAvailable: true,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildLanguageOption(
+                              context: context,
+                              language: 'Assamese',
+                              route: route,
+                              title: title,
+                              fontScale: fontScale,
+                              isAvailable: true,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildLanguageOption(
+                              context: context,
+                              language: 'Hindi',
+                              route: route,
+                              title: title,
+                              fontScale: fontScale,
+                              isAvailable: true,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildLanguageOption(
+                              context: context,
+                              language: 'Bengali',
+                              route: route,
+                              title: title,
+                              fontScale: fontScale,
+                              isAvailable: true,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildLanguageOption(
+                              context: context,
+                              language: 'More Languages',
+                              route: route,
+                              title: title,
+                              fontScale: fontScale,
+                              isAvailable: false,
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 16 * fontScale,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

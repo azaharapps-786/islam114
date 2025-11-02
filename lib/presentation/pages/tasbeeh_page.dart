@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // For debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
-import 'dart:async'; // For TimeoutException
+import 'dart:async';
 
 import '../../core/services/settings_service.dart';
 
@@ -17,14 +17,8 @@ class TasbeehPage extends StatefulWidget {
 }
 
 class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-  late AnimationController _pageAnimationController;
-  late Animation<double> _fadeAnimation;
-  int _animationKey = 0; // Key to force recreation of animated elements
-
   int _counter = 0;
-  int _target = 33; // Default target
+  int _target = 33;
   bool _soundEnabled = true;
   bool _hapticEnabled = true;
   final Map<String, int> _history = {};
@@ -32,113 +26,133 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
   late String _today;
   bool _isLoading = true;
 
-  // ENHANCED: Larger pool with better management
-  final List<AudioPlayer> _audioPlayerPool = [];
-  final List<bool> _playerAvailability = []; // Track which players are free
-  final int _poolSize = 8; // Increased to 8 players
+  // ROBUST ADAPTIVE SOUND STRATEGY
+  final List<AudioPlayer> _audioPlayers = []; // Pool of players for rapid taps
+  final List<bool> _playerInUse = []; // Track which players are in use
+  static const int _playerPoolSize = 5; // Number of players in pool
+  Timer? _tapRateTimer; // Timer to calculate tap rate
+  int _recentTaps = 0; // Count of recent taps
+  double _currentSpeed = 1.0; // Current playback speed
+  bool _isRapidTapping = false; // Flag for rapid tapping mode
 
-  // Audio source cache
-  late AudioPlayer _preloadPlayer; // For preloading audio
-  bool _audioPreloaded = false;
-
-  // Optimized: Getter for sorted history to avoid recomputation in build
-  List<MapEntry<String, int>> get _sortedHistory => _history.entries.toList()
-    ..sort((a, b) => b.key.compareTo(a.key));
+  // Animation setup
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
     _today = _dateFormat.format(DateTime.now());
-
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 150),
-      vsync: this,
-    );
-
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    _pageAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _pageAnimationController, curve: Curves.easeInOut),
-    );
-
-    _restartAnimation(); // Initialize animations
-
-    // Initialize audio player pool
-    _initializeAudioPlayerPool();
-
+    _initializeAnimations();
+    _initializeAudioPlayers();
+    _initializeTapRateMonitor();
     _loadData();
   }
 
-  // Restart the page animations and trigger a rebuild for list items.
-  void _restartAnimation() {
-    _pageAnimationController.reset();
-    _pageAnimationController.forward();
-    _animationKey++;
-    // Force a rebuild to replay list animations via key changes.
-    if (mounted) {
-      setState(() {});
-    }
+  void _initializeAnimations() {
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOut,
+      ),
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.elasticOut,
+      ),
+    );
+    _animationController.forward();
   }
 
-  Future<void> _initializeAudioPlayerPool() async {
-    // Create preload player
-    _preloadPlayer = AudioPlayer();
-    await _preloadPlayer.setPlayerMode(PlayerMode.lowLatency);
-
-    // Try to preload the audio
-    try {
-      await _preloadPlayer.setSource(AssetSource('sounds/tap_sound.mp3'));
-      _audioPreloaded = true;
-      debugPrint('Audio preloaded successfully');
-    } catch (e) {
-      debugPrint('Could not preload audio: $e');
-    }
-
-    // Create player pool
-    for (int i = 0; i < _poolSize; i++) {
+  // Initialize pool of audio players
+  void _initializeAudioPlayers() {
+    for (int i = 0; i < _playerPoolSize; i++) {
       final player = AudioPlayer();
-      await player.setPlayerMode(PlayerMode.lowLatency);
-      await player.setReleaseMode(ReleaseMode.stop);
+      _audioPlayers.add(player);
+      _playerInUse.add(false);
 
       // Set up completion listener to mark player as available
       player.onPlayerComplete.listen((_) {
-        if (mounted && i < _playerAvailability.length) {
-          _playerAvailability[i] = true;
+        if (mounted && i < _playerInUse.length) {
+          _playerInUse[i] = false;
         }
       });
-
-      _audioPlayerPool.add(player);
-      _playerAvailability.add(true); // Initially all players are available
     }
+  }
+
+  // Initialize tap rate monitoring
+  void _initializeTapRateMonitor() {
+    _tapRateTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (_recentTaps >= 3) {
+        // Rapid tapping detected
+        if (!_isRapidTapping) {
+          setState(() {
+            _isRapidTapping = true;
+            _currentSpeed = 2.5; // Fast speed for rapid tapping
+          });
+          debugPrint('Rapid tapping detected, speed: $_currentSpeed');
+        }
+      } else if (_recentTaps == 0) {
+        // No tapping recently
+        if (_isRapidTapping) {
+          setState(() {
+            _isRapidTapping = false;
+            _currentSpeed = 1.0; // Normal speed
+          });
+          debugPrint('Tapping stopped, speed reset to: $_currentSpeed');
+        }
+      } else if (_recentTaps == 1) {
+        // Single tap
+        if (_isRapidTapping) {
+          setState(() {
+            _isRapidTapping = false;
+            _currentSpeed = 1.0; // Normal speed
+          });
+          debugPrint('Single tap, speed reset to: $_currentSpeed');
+        }
+      } else if (_recentTaps == 2) {
+        // Double tap
+        if (!_isRapidTapping) {
+          setState(() {
+            _currentSpeed = 1.5; // Medium speed for double tap
+          });
+          debugPrint('Double tap detected, speed: $_currentSpeed');
+        }
+      }
+
+      // Reset tap count for next interval
+      _recentTaps = 0;
+    });
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
-    _pageAnimationController.dispose();
-    _preloadPlayer.dispose();
+    _tapRateTimer?.cancel();
 
-    // Dispose all audio players in the pool
-    for (final player in _audioPlayerPool) {
+    // Dispose all audio players
+    for (final player in _audioPlayers) {
       player.dispose();
     }
 
+    _animationController.dispose();
     super.dispose();
   }
 
   Future<void> _loadData() async {
     try {
-      final prefs = await SharedPreferences.getInstance().timeout(
-        const Duration(seconds: 4),  // Prevent indefinite wait
-        onTimeout: () => throw TimeoutException('SharedPreferences timeout', const Duration(seconds: 4)),
-      );
+      final prefs = await SharedPreferences.getInstance();
       if (mounted) {
         setState(() {
           _counter = prefs.getInt('count_$_today') ?? 0;
@@ -149,13 +163,11 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
         });
       }
     } catch (e) {
-      debugPrint('SharedPreferences load error: $e');  // Log for diagnostics
+      debugPrint('SharedPreferences load error: $e');
       if (mounted) {
-        setState(() { _isLoading = false; });  // Fallback to defaults
+        setState(() { _isLoading = false; });
       }
     }
-
-    // Load history separately to avoid blocking UI
     _loadHistory();
   }
 
@@ -166,7 +178,7 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
 
       final keys = prefs.getKeys().where((key) => key.startsWith('count_')).toList();
       for (final key in keys) {
-        final date = key.substring(6); // Remove 'count_' prefix
+        final date = key.substring(6);
         newHistory[date] = prefs.getInt(key) ?? 0;
       }
 
@@ -189,7 +201,6 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
       await prefs.setBool('sound_enabled', _soundEnabled);
       await prefs.setBool('haptic_enabled', _hapticEnabled);
 
-      // Update history after saving
       _history[_today] = _counter;
       if (mounted) setState(() {});
     } catch (e) {
@@ -197,77 +208,59 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
     }
   }
 
-  void _playSound() {
-    if (_soundEnabled) {
-      try {
-        // Find first available player
-        int playerIndex = -1;
-        for (int i = 0; i < _poolSize; i++) {
-          if (_playerAvailability[i]) {
-            playerIndex = i;
-            break;
-          }
+  // ROBUST SOUND PLAYING STRATEGY
+  void _playSound() async {
+    if (!_soundEnabled) return;
+
+    try {
+      // Find an available player
+      int? availablePlayerIndex;
+      for (int i = 0; i < _playerInUse.length; i++) {
+        if (!_playerInUse[i]) {
+          availablePlayerIndex = i;
+          break;
         }
-
-        // If no player is available, force use the first one with bounds check
-        if (playerIndex == -1) {
-          playerIndex = 0;
-          if (playerIndex >= _poolSize) return;  // Safety check
-          debugPrint('No available player, forcing use of player 0');
-        }
-
-        // Mark player as busy
-        _playerAvailability[playerIndex] = false;
-
-        final player = _audioPlayerPool[playerIndex];
-
-        // Stop any currently playing sound on this player
-        player.stop().then((_) {
-          // Play the sound
-          player.play(AssetSource('sounds/tap_sound.mp3'), volume: 1.0).catchError((error) {
-            debugPrint('Error playing sound: $error');
-            // Mark as available again even on error
-            if (mounted && playerIndex < _playerAvailability.length) {
-              _playerAvailability[playerIndex] = true;
-            }
-          });
-        }).catchError((error) {
-          debugPrint('Error stopping player: $error');
-          // Try to play anyway
-          player.play(AssetSource('sounds/tap_sound.mp3'), volume: 1.0).catchError((e) {
-            debugPrint('Error playing after stop error: $e');
-          });
-        });
-
-        // Set a fallback timer to mark player as available after 200ms
-        // This ensures we don't get stuck with all players marked as busy
-        Future.delayed(const Duration(milliseconds: 200), () {
-          if (mounted && playerIndex < _playerAvailability.length) {
-            _playerAvailability[playerIndex] = true;
-          }
-        });
-
-      } catch (e) {
-        debugPrint('Could not play sound: $e');
       }
-    }
 
-    if (_hapticEnabled) {
-      // Use Flutter's built-in haptic feedback
-      HapticFeedback.lightImpact();
+      // If no player is available, use the first one
+      if (availablePlayerIndex == null) {
+        availablePlayerIndex = 0;
+        debugPrint('All players busy, using player 0');
+      }
+
+      // Mark player as in use
+      _playerInUse[availablePlayerIndex] = true;
+
+      // Get the player and set its speed
+      final player = _audioPlayers[availablePlayerIndex];
+      await player.setPlaybackRate(_currentSpeed);
+
+      // Play the sound
+      await player.play(AssetSource('sounds/tap_sound.mp3'));
+
+      debugPrint('Playing sound at speed: $_currentSpeed');
+    } catch (e) {
+      debugPrint('Error playing sound: $e');
     }
   }
 
   void _incrementCounter() {
     setState(() {
       _counter++;
-      _pulseController.forward().then((_) => _pulseController.reverse());
     });
 
-    // Play sound IMMEDIATELY without waiting
+    // Increment tap count for rate monitoring
+    _recentTaps++;
+
+    // Play sound
     _playSound();
 
-    // Save data asynchronously without blocking
+    // Haptic feedback
+    if (_hapticEnabled) {
+      HapticFeedback.lightImpact();
+    }
+
+    // Save data
     _saveData();
   }
 
@@ -347,9 +340,16 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final double fontScale = Provider.of<SettingsService>(context).fontScale;
     final theme = Theme.of(context);
     final screenHeight = MediaQuery.of(context).size.height;
+
+    // Robust fontScale retrieval with fallback
+    double fontScale = 1.0;
+    try {
+      fontScale = Provider.of<SettingsService>(context).fontScale;
+    } catch (e) {
+      debugPrint('SettingsService not found; using default fontScale: 1.0. Ensure provider is wrapped in ancestors.');
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -378,299 +378,266 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : FadeTransition(
-        opacity: _fadeAnimation,
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: screenHeight - AppBar().preferredSize.height - MediaQuery.of(context).padding.top,
-            ),
-            child: Column(  // Removed IntrinsicHeight
-              children: [
-                // Counter Display - Reduced padding
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('counter-$_animationKey'),
-                  duration: const Duration(milliseconds: 600),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), // Reduced from 16
+      body: SafeArea(
+        child: ScaleTransition(
+          scale: _scaleAnimation,
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    theme.colorScheme.primary.withOpacity(0.1),
+                    theme.colorScheme.surface,
+                  ],
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: screenHeight - kToolbarHeight - MediaQuery.of(context).padding.top,
+                  ),
+                  child: IntrinsicHeight(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        AnimatedBuilder(
-                          animation: _pulseAnimation,
-                          builder: (context, child) {
-                            return Transform.scale(
-                              scale: _pulseAnimation.value,
-                              child: Text(
+                        // Counter Display
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                          margin: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
                                 '$_counter',
                                 style: TextStyle(
-                                  fontSize: 48 * fontScale, // Reduced from 60
+                                  fontSize: 48 * fontScale,
                                   fontWeight: FontWeight.bold,
                                   color: theme.colorScheme.primary,
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 8), // Reduced from 12
-                        Text(
-                          'Progress: $_counter / $_target',
-                          style: TextStyle(
-                            fontSize: 16 * fontScale, // Reduced from 18
-                            color: theme.colorScheme.onSurface.withOpacity(0.7),  // Fixed: Use withOpacity
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: _target > 0 ? _counter / _target : 0.0,
-                          minHeight: 8,
-                          borderRadius: BorderRadius.circular(4),
-                          backgroundColor: theme.colorScheme.surface,
-                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Tap Area
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('tap-area-$_animationKey'),
-                  duration: const Duration(milliseconds: 600),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Flexible(  // Fixed: Replaced Expanded with Flexible
-                    fit: FlexFit.loose,  // Allow flexible sizing
-                    flex: 3,
-                    child: GestureDetector(
-                      onTap: _incrementCounter,
-                      child: Container(
-                        margin: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.1),  // Fixed: Use withOpacity
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: theme.colorScheme.primary.withOpacity(0.3),  // Fixed: Use withOpacity
-                            width: 2,
-                          ),
-                        ),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.touch_app,
-                                size: 56 * fontScale,
-                                color: theme.colorScheme.primary.withOpacity(0.5),  // Fixed: Use withOpacity
-                              ),
-                              const SizedBox(height: 200),
+                              const SizedBox(height: 16),
                               Text(
-                                'TAP HERE',
+                                'Progress: $_counter / $_target',
                                 style: TextStyle(
-                                  fontSize: 26 * fontScale,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary.withOpacity(0.5),  // Fixed: Use withOpacity
+                                  fontSize: 16 * fontScale,
+                                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              LinearProgressIndicator(
+                                value: _target > 0 ? _counter / _target : 0.0,
+                                minHeight: 8,
+                                borderRadius: BorderRadius.circular(4),
+                                backgroundColor: theme.colorScheme.surface,
+                                valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Tap Area
+                        Expanded(
+                          flex: 2,
+                          child: GestureDetector(
+                            onTap: _incrementCounter,
+                            child: Container(
+                              margin: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: theme.colorScheme.primary.withOpacity(0.3),
+                                  width: 2,
+                                ),
+                              ),
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.touch_app,
+                                      size: 56 * fontScale,
+                                      color: theme.colorScheme.primary.withOpacity(0.5),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    Text(
+                                      'TAP HERE',
+                                      style: TextStyle(
+                                        fontSize: 26 * fontScale,
+                                        fontWeight: FontWeight.bold,
+                                        color: theme.colorScheme.primary.withOpacity(0.5),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'Speed: ${_currentSpeed.toStringAsFixed(1)}x',
+                                      style: TextStyle(
+                                        fontSize: 14 * fontScale,
+                                        color: theme.colorScheme.primary.withOpacity(0.7),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      _isRapidTapping ? '🔥 Rapid Tapping!' : '',
+                                      style: TextStyle(
+                                        fontSize: 12 * fontScale,
+                                        color: Colors.orange,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Control Buttons
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Wrap(
+                            alignment: WrapAlignment.spaceEvenly,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              SizedBox(
+                                width: 100,
+                                child: ElevatedButton.icon(
+                                  onPressed: _setTarget,
+                                  icon: const Icon(Icons.flag),
+                                  label: const Text('Target'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.colorScheme.primary,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 100,
+                                child: ElevatedButton.icon(
+                                  onPressed: _decrementCounter,
+                                  icon: const Icon(Icons.undo),
+                                  label: const Text('Undo'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.colorScheme.secondary,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 100,
+                                child: ElevatedButton.icon(
+                                  onPressed: _resetCounter,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Reset'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
 
-                // Control Buttons
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('controls-$_animationKey'),
-                  duration: const Duration(milliseconds: 700),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Wrap(
-                      alignment: WrapAlignment.spaceEvenly,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        SizedBox(
-                          width: 100,
-                          child: ElevatedButton.icon(
-                            onPressed: _setTarget,
-                            icon: const Icon(Icons.flag),
-                            label: const Text('Target'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.colorScheme.primary,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 100,
-                          child: ElevatedButton.icon(
-                            onPressed: _decrementCounter,
-                            icon: const Icon(Icons.undo),
-                            label: const Text('Undo'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.colorScheme.secondary,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 100,
-                          child: ElevatedButton.icon(
-                            onPressed: _resetCounter,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Reset'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // History Section
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('history-$_animationKey'),
-                  duration: const Duration(milliseconds: 800),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'History',
-                          style: TextStyle(
-                            fontSize: 18 * fontScale,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 22),
+                        // History Section
                         Container(
-                          height: 100,
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: theme.colorScheme.outline.withOpacity(0.3),  // Fixed: Use withOpacity
-                            ),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                          child: _history.isEmpty
-                              ? const Center(child: Text('No history yet'))
-                              : ListView.builder(
-                            key: ValueKey('history-list-$_animationKey'), // Unique key for history list
-                            padding: const EdgeInsets.all(8),
-                            itemCount: _sortedHistory.length,  // Fixed: Use getter
-                            itemBuilder: (context, index) {
-                              final entry = _sortedHistory[index];  // Fixed: Use pre-sorted getter
-                              final date = DateTime.parse(entry.key);
-                              final formattedDate = DateFormat('MMM dd, yyyy').format(date);
-
-                              return TweenAnimationBuilder<double>(
-                                key: ValueKey('history-item-$index-$_animationKey'), // Staggered key
-                                duration: Duration(milliseconds: 400 + (index * 80)),
-                                tween: Tween(begin: 0.0, end: 1.0),
-                                curve: Curves.easeOut,
-                                builder: (context, itemValue, child) {
-                                  return Transform.translate(
-                                    offset: Offset(0, 10 * (1 - itemValue)),
-                                    child: Transform.scale(
-                                      scale: itemValue,
-                                      child: Opacity(
-                                        opacity: itemValue,
-                                        child: child,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 2),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(formattedDate),
-                                      Text(
-                                        '${entry.value} taps',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                      ),
-                                    ],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'History',
+                                style: TextStyle(
+                                  fontSize: 18 * fontScale,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outline.withOpacity(0.3),
                                   ),
                                 ),
-                              );
-                            },
+                                child: _history.isEmpty
+                                    ? const Center(child: Text('No history yet'))
+                                    : ListView.builder(
+                                  padding: const EdgeInsets.all(8),
+                                  itemCount: _history.length,
+                                  itemBuilder: (context, index) {
+                                    final sortedEntries = _history.entries.toList()
+                                      ..sort((a, b) => b.key.compareTo(a.key));
+                                    final entry = sortedEntries[index];
+                                    final date = DateTime.parse(entry.key);
+                                    final formattedDate = DateFormat('MMM dd, yyyy').format(date);
+
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 2),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(formattedDate),
+                                          ),
+                                          Text(
+                                            '${entry.value} taps',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),

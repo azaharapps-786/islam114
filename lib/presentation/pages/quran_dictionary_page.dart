@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:islam114/main.dart'; // Import for global RouteObserver from main.dart
+import 'package:islam114/main.dart';
 import '../../core/services/settings_service.dart';
 import '../../data/models/quran_dictionary_model.dart';
 import '../../data/services/quran_dictionary_service.dart';
@@ -23,7 +23,7 @@ class QuranDictionaryPage extends StatefulWidget {
 class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerProviderStateMixin, RouteAware, WidgetsBindingObserver {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  int _animationKey = 0; // Key to force recreation of animated elements
+  late Animation<double> _scaleAnimation;
 
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -34,7 +34,7 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
   String _selectedLanguage = 'english';
   double _fontScale = 1.0;
   bool _isDarkMode = false;
-  String _readingMode = 'standard'; // standard, comfort, focused
+  String _readingMode = 'standard';
   String _errorMessage = '';
   Timer? _debounceTimer;
 
@@ -42,14 +42,25 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeInOut),
+      ),
     );
-    _restartAnimation(); // Initialize animations
+    _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutBack,
+      ),
+    );
+
+    _animationController.forward();
 
     _loadSettings();
     _loadDictionaryData();
@@ -58,7 +69,6 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Subscribe to the global RouteObserver instance.
     final modalRoute = ModalRoute.of(context);
     if (modalRoute is PageRoute) {
       routeObserver.subscribe(this, modalRoute as PageRoute<dynamic>);
@@ -69,8 +79,8 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Trigger animation restart when app resumes from background.
-      _restartAnimation();
+      _animationController.reset();
+      _animationController.forward();
     }
   }
 
@@ -81,7 +91,6 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
     _searchController.dispose();
     _scrollController.dispose();
     _debounceTimer?.cancel();
-    // Unsubscribe from the global RouteObserver to prevent memory leaks.
     final modalRoute = ModalRoute.of(context);
     if (modalRoute is PageRoute) {
       routeObserver.unsubscribe(this);
@@ -89,22 +98,10 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
     super.dispose();
   }
 
-  // Restart the page animations and trigger a rebuild for list items.
-  void _restartAnimation() {
-    _animationController.reset();
-    _animationController.forward();
-    _animationKey++;
-    // Force a rebuild to replay list animations via key changes.
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
   @override
   void didPopNext() {
-    // Triggered when returning to this route (e.g., popping back from another page).
-    print('didPopNext called: Restarting QuranDictionaryPage animation'); // Debug log for verification.
-    _restartAnimation();
+    _animationController.reset();
+    _animationController.forward();
   }
 
   Future<void> _loadSettings() async {
@@ -145,11 +142,9 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
         _errorMessage = '';
       });
 
-      // Debug: Try to load the raw JSON first
       final String jsonString = await rootBundle.loadString('assets/dictionaries/quran_dictionary_$_selectedLanguage.json');
       print('JSON loaded successfully, length: ${jsonString.length}');
 
-      // Debug: Parse the JSON
       final dynamic jsonData = json.decode(jsonString);
       print('JSON parsed successfully, type: ${jsonData.runtimeType}');
 
@@ -192,7 +187,6 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
   }
 
   void _filterDictionary(String query) {
-    // Cancel previous timer
     _debounceTimer?.cancel();
 
     if (query.isEmpty) {
@@ -203,14 +197,11 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
       return;
     }
 
-    // Show searching indicator
     setState(() {
       _isSearching = true;
     });
 
-    // Start a new timer
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      // Run search in a separate isolate to avoid blocking UI
       compute(_performSearch, {'items': _dictionaryItems, 'query': query})
           .then((results) {
         if (mounted) {
@@ -232,7 +223,6 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
     });
   }
 
-  // Static function to run in isolate
   static List<QuranDictionaryItem> _performSearch(Map<String, dynamic> params) {
     final List<QuranDictionaryItem> items = params['items'];
     final String query = params['query'];
@@ -277,9 +267,7 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
         onLanguageChanged: (value) {
           _changeLanguage(value);
         },
-        onResetLanguageDialog: () {
-          // No longer needed since we removed the popup
-        },
+        onResetLanguageDialog: () {},
       ),
     );
   }
@@ -313,29 +301,14 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
             ),
           ],
         ),
-        body: FadeTransition(
-          opacity: _fadeAnimation,
-          child: Column(
-            children: [
-              // Search bar
-              TweenAnimationBuilder<double>(
-                key: ValueKey('search-bar-$_animationKey'),
-                duration: const Duration(milliseconds: 500),
-                tween: Tween(begin: 0.0, end: 1.0),
-                curve: Curves.easeOut,
-                builder: (context, value, child) {
-                  return Transform.translate(
-                    offset: Offset(0, 20 * (1 - value)),
-                    child: Transform.scale(
-                      scale: value,
-                      child: Opacity(
-                        opacity: value,
-                        child: child,
-                      ),
-                    ),
-                  );
-                },
-                child: Padding(
+        body: ScaleTransition(
+          scale: _scaleAnimation,
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: Column(
+              children: [
+                // Search bar
+                Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: TextField(
                     controller: _searchController,
@@ -370,28 +343,10 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
                     ),
                   ),
                 ),
-              ),
 
-              // Searching indicator
-              if (_isSearching)
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('searching-indicator-$_animationKey'),
-                  duration: const Duration(milliseconds: 500),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Padding(
+                // Searching indicator
+                if (_isSearching)
+                  Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Row(
                       children: [
@@ -416,28 +371,10 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
                       ],
                     ),
                   ),
-                ),
 
-              // Results count
-              if (_searchController.text.isNotEmpty && !_isSearching)
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('results-count-$_animationKey'),
-                  duration: const Duration(milliseconds: 500),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Padding(
+                // Results count
+                if (_searchController.text.isNotEmpty && !_isSearching)
+                  Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Row(
                       children: [
@@ -452,7 +389,6 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
                         if (_filteredItems.isNotEmpty)
                           TextButton(
                             onPressed: () {
-                              // Scroll to top
                               _scrollController.animateTo(
                                 0,
                                 duration: const Duration(milliseconds: 300),
@@ -470,28 +406,10 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
                       ],
                     ),
                   ),
-                ),
 
-              // Error message
-              if (_errorMessage.isNotEmpty)
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('error-message-$_animationKey'),
-                  duration: const Duration(milliseconds: 600),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Padding(
+                // Error message
+                if (_errorMessage.isNotEmpty)
+                  Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Container(
                       padding: const EdgeInsets.all(16),
@@ -526,49 +444,13 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
                       ),
                     ),
                   ),
-                ),
 
-              // Dictionary list with smooth scrolling
-              Expanded(
-                child: _isLoading
-                    ? TweenAnimationBuilder<double>(
-                  key: ValueKey('loading-dictionary-$_animationKey'),
-                  duration: const Duration(milliseconds: 600),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: const Center(child: CircularProgressIndicator()),
-                )
-                    : _filteredItems.isEmpty
-                    ? TweenAnimationBuilder<double>(
-                  key: ValueKey('empty-results-$_animationKey'),
-                  duration: const Duration(milliseconds: 600),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: Transform.scale(
-                        scale: value,
-                        child: Opacity(
-                          opacity: value,
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Center(
+                // Dictionary list
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _filteredItems.isEmpty
+                      ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -596,50 +478,31 @@ class _QuranDictionaryPageState extends State<QuranDictionaryPage> with TickerPr
                         ),
                       ],
                     ),
+                  )
+                      : ListView.builder(
+                    controller: _scrollController,
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    cacheExtent: 500.0,
+                    padding: const EdgeInsets.all(16.0),
+                    itemCount: _filteredItems.length,
+                    itemBuilder: (context, index) {
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        child: DictionaryItemCard(
+                          key: ValueKey(_filteredItems[index].id),
+                          item: _filteredItems[index],
+                          fontScale: settingsFontScale * _fontScale,
+                          readingMode: _readingMode,
+                        ),
+                      );
+                    },
                   ),
-                )
-                    : ListView.builder(
-                  key: ValueKey('dictionary-list-$_animationKey'), // Unique key for list recreation
-                  controller: _scrollController,
-                  // Use BouncingScrollPhysics for smooth, natural scrolling
-                  physics: const BouncingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
-                  // Enable cache extent for smoother scrolling
-                  cacheExtent: 500.0,
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: _filteredItems.length,
-                  // Use a more efficient item builder for large lists
-                  itemBuilder: (context, index) {
-                    // Use a key to help Flutter identify items
-                    return TweenAnimationBuilder<double>(
-                      key: ValueKey('dictionary-item-$index-$_animationKey'), // Staggered key
-                      duration: Duration(milliseconds: 400 + (index * 80)),
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      curve: Curves.easeOut,
-                      builder: (context, itemValue, child) {
-                        return Transform.translate(
-                          offset: Offset(0, 10 * (1 - itemValue)),
-                          child: Transform.scale(
-                            scale: itemValue,
-                            child: Opacity(
-                              opacity: itemValue,
-                              child: child,
-                            ),
-                          ),
-                        );
-                      },
-                      child: DictionaryItemCard(
-                        key: ValueKey(_filteredItems[index].id),
-                        item: _filteredItems[index],
-                        fontScale: settingsFontScale * _fontScale,
-                        readingMode: _readingMode,
-                      ),
-                    );
-                  },
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

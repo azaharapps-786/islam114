@@ -21,7 +21,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     with TickerProviderStateMixin, RouteAware, WidgetsBindingObserver {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  int _animationKey = 0; // Key to force recreation of animated elements
 
   List<Map<String, dynamic>> _chapters = [];
   List<Map<String, dynamic>> _filteredChapters = [];
@@ -42,13 +41,13 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    _restartAnimation(); // Initialize animations
+    _animationController.forward();
 
     _loadData();
 
@@ -75,7 +74,8 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       // Trigger animation restart when app resumes from background.
-      _restartAnimation();
+      _animationController.reset();
+      _animationController.forward();
     }
   }
 
@@ -93,22 +93,11 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     super.dispose();
   }
 
-  // Restart the page animations and trigger a rebuild for list items.
-  void _restartAnimation() {
-    _animationController.reset();
-    _animationController.forward();
-    _animationKey++;
-    // Force a rebuild to replay list animations via key changes.
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
   @override
   void didPopNext() {
     // Triggered when returning to this route (e.g., popping back from another page).
-    print('didPopNext called: Restarting BukhariHadithPage animation'); // Debug log for verification.
-    _restartAnimation();
+    _animationController.reset();
+    _animationController.forward();
   }
 
   Future<void> _loadData() async {
@@ -158,7 +147,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     setState(() {
       _isLoading = true;
       _selectedChapterId = chapterId;
-      _animationKey++; // Increment key to restart animations when switching to hadiths view
     });
 
     try {
@@ -286,7 +274,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
       _selectedChapterId = null;
       _hadiths = [];
       _filteredHadiths = [];
-      _animationKey++; // Increment key to restart animations when returning to chapters
     });
   }
 
@@ -429,8 +416,8 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : _selectedChapterId == null
-                      ? _buildChaptersList(fontScale, theme, _animationKey)
-                      : _buildHadithsList(fontScale, theme, settings.showArabic, _animationKey),
+                      ? _buildChaptersList(fontScale, theme)
+                      : _buildHadithsList(fontScale, theme, settings.showArabic),
                 ),
               ],
             ),
@@ -440,7 +427,7 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     );
   }
 
-  Widget _buildChaptersList(double fontScale, ThemeData theme, int animationKey) {
+  Widget _buildChaptersList(double fontScale, ThemeData theme) {
     if (_filteredChapters.isEmpty) {
       return Center(
         child: Column(
@@ -474,30 +461,15 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     }
 
     return ListView.builder(
-      key: ValueKey('chapters-list-$animationKey'), // Unique key to force recreation on animation restart
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       itemCount: _filteredChapters.length,
       itemBuilder: (context, index) {
         final chapter = _filteredChapters[index];
         final chapterId = _extractIntSafely(chapter['id'], index + 1);
-        return TweenAnimationBuilder<double>(
-          key: ValueKey('chapter$index-$animationKey'), // Unique key for staggered animation restart
-          duration: Duration(milliseconds: 400 + (index * 80)), // Staggered entrance for smooth reveal
-          tween: Tween(begin: 0.0, end: 1.0),
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
-          builder: (context, value, child) {
-            return Transform.translate(
-              offset: Offset(0, 20 * (1 - value)),
-              child: Transform.scale(
-                scale: value,
-                child: Opacity(
-                  opacity: value,
-                  child: child,
-                ),
-              ),
-            );
-          },
           child: HadithChapterListItem(
             chapterId: chapterId,
             titleAr: chapter['arabic']?.toString() ?? '',
@@ -510,7 +482,7 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     );
   }
 
-  Widget _buildHadithsList(double fontScale, ThemeData theme, bool showArabic, int animationKey) {
+  Widget _buildHadithsList(double fontScale, ThemeData theme, bool showArabic) {
     if (_filteredHadiths.isEmpty) {
       return Center(
         child: Column(
@@ -544,7 +516,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     }
 
     return ListView.builder(
-      key: ValueKey('hadiths-list-$animationKey'), // Unique key to force recreation on animation restart
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       itemCount: _filteredHadiths.length,
@@ -559,23 +530,9 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
         final String text = hadith['english']?.toString() ?? '';
         final String? narrator = hadith['narrator']?.toString();
 
-        return TweenAnimationBuilder<double>(
-          key: ValueKey('hadith$index-$animationKey'), // Unique key for staggered animation restart
-          duration: Duration(milliseconds: 400 + (index * 80)), // Staggered entrance for smooth reveal
-          tween: Tween(begin: 0.0, end: 1.0),
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
-          builder: (context, value, child) {
-            return Transform.translate(
-              offset: Offset(0, 20 * (1 - value)),
-              child: Transform.scale(
-                scale: value,
-                child: Opacity(
-                  opacity: value,
-                  child: child,
-                ),
-              ),
-            );
-          },
           child: Padding(
             padding: const EdgeInsets.only(bottom: 16.0),
             child: HadithCard(
