@@ -9,6 +9,7 @@ import 'core/providers/prayer_times_provider.dart';
 import 'presentation/pages/home_page.dart';
 import 'presentation/pages/settings_page.dart';
 import 'presentation/pages/surah_list_page.dart';
+import 'presentation/pages/surah_detail_page.dart'; // Add this import
 import 'presentation/pages/tasbeeh_page.dart';
 import 'presentation/pages/namaz_times_page.dart';
 import 'presentation/pages/quran_dictionary_page.dart';
@@ -146,6 +147,7 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
             '/home': (context) => const HomePage(),
             '/settings': (context) => const SettingsPage(),
             '/surahList': (context) => const SurahListPage(),
+            '/surahDetail': (context) => const SurahDetailPage(), // Add this route
             '/tasbeeh': (context) => const TasbeehPage(),
             '/namaz': (context) => const NamazTimesPage(),
             '/dictionary': (context) => const QuranDictionaryPage(),

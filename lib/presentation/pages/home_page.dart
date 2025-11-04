@@ -8,6 +8,7 @@ import 'package:islam114/main.dart';
 import '../../core/services/settings_service.dart';
 import '../widgets/home_feature_card.dart';
 import '../widgets/home_bottom_bar.dart';
+import '../widgets/tafseer_language_dialog.dart'; // Add this import
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -86,6 +87,33 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     _restartAnimation();
   }
 
+  // Updated method to handle the tafseer language selection with animation:
+  void _showTafseerLanguageDialog(BuildContext context) {
+    showGeneralDialog(
+      context: context,
+      barrierLabel: 'Tafseer Language Selection',
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.5),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) => const TafseerLanguageDialog(),
+      transitionBuilder: (context, animation1, animation2, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation1,
+            curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
+          ),
+          child: ScaleTransition(
+            scale: CurvedAnimation(
+              parent: animation1,
+              curve: const Interval(0.0, 1.0, curve: Curves.elasticOut),
+            ),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
   final List<Map<String, dynamic>> _primaryFeatures = [
     {
       'title': 'অসমীয়া কোৰআন',
@@ -125,8 +153,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     {
       'title': 'Quran Tafseer',
       'icon': 'assets/icons/tafseer.svg',
-      'route': '/tafseer',
-      'params': null,
+      'route': '/tafseerLanguageSelection', // Changed route
+      'params': null, // No params needed now
       'emoji': '📚'
     },
     {
@@ -355,6 +383,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     );
   }
 
+  // Update the _buildFeatureGrid method to handle the new route:
   Widget _buildFeatureGrid(List<Map<String, dynamic>> features,
       int crossAxisCount, double fontScale, ThemeData theme, int animationKey) {
     return LayoutBuilder(
@@ -395,8 +424,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                         iconPath: feature['icon'],
                         emojiIcon: feature['emoji'],
                         onTap: () {
-                          HapticFeedback.lightImpact(); // Using Flutter's built-in haptic feedback
-                          Navigator.pushNamed(context, route, arguments: params);
+                          HapticFeedback.lightImpact();
+
+                          // Handle tafseer route specially
+                          if (route == '/tafseerLanguageSelection') {
+                            _showTafseerLanguageDialog(context);
+                          } else {
+                            Navigator.pushNamed(context, route, arguments: params);
+                          }
                         },
                       ),
                     ),

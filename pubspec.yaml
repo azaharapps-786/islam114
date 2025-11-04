@@ -79,6 +79,16 @@ flutter:
     - assets/dictionaries/quran_dictionary_english.json  # Quran Dictionary English
     - assets/dictionaries/quran_dictionary_assamese.json # Quran Dictionary Assamese
     - assets/data/sahih_al_bukhari.json
+    - assets/data/surah_list_english.json
+    - assets/data/surah_list_assamese.json
+    - assets/data/surah_list_bengali.json
+    - assets/data/surah_list_hindi.json
+    - assets/data/surah_list_arabic.json
+    - assets/data/surah_list_english_tafseer.json
+    - assets/data/surah_list_assamese_tafseer.json
+    - assets/data/surah_list_hindi_tafseer.json
+    - assets/data/surah_list_arabic_tafseer.json
+    - assets/data/surah_list_bengali_tafseer.json
 
   fonts:
     - family: Uthmanic
