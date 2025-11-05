@@ -1,62 +1,641 @@
 // lib/presentation/pages/surah_detail_page.dart
+import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
-class SurahDetailPage extends StatelessWidget {
+import '../../core/services/settings_service.dart';
+import '../widgets/verse_card.dart';
+import '../widgets/surah_settings_dialog.dart';
+
+class SurahDetailPage extends StatefulWidget {
   const SurahDetailPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  State<SurahDetailPage> createState() => _SurahDetailPageState();
+}
+
+class _SurahDetailPageState extends State<SurahDetailPage> {
+  List<Map<String, dynamic>> _verses = [];
+  List<Map<String, dynamic>> _filteredVerses = [];
+  bool _isLoading = true;
+  String _surahName = '';
+  int _surahNumber = 0;
+  String _language = 'english';
+  bool _isTafseer = false;
+  bool _isSearching = false;
+  bool _showSearchBar = false; // FIXED: Explicit toggle state for search bar visibility
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  Timer? _debounceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSurahData();
+
+    // Initialize search controller listener
+    _searchController.addListener(() {
+      _filterVerses(_searchController.text);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload data when arguments change
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    final int number = args?['number'] ?? 1;
-    final String name = args?['name'] ?? '';
-    final String language = args?['language'] ?? 'english';
+    if (args != null) {
+      final newLanguage = args['language'] ?? 'english';
+      final newSurahNumber = args['surahNumber'] ?? 1;
+      final newIsTafseer = args['isTafseer'] ?? false;
+
+      if (newLanguage != _language || newSurahNumber != _surahNumber || newIsTafseer != _isTafseer) {
+        _language = newLanguage;
+        _surahNumber = newSurahNumber;
+        _isTafseer = newIsTafseer;
+        _loadSurahData();
+      }
+    }
+  }
+
+  Future<void> _loadSurahData() async {
+    if (_surahNumber == 0) {
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      _surahNumber = args?['surahNumber'] ?? 1;
+      _language = args?['language'] ?? 'english';
+      _isTafseer = args?['isTafseer'] ?? false;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Determine the correct JSON file to load
+      String jsonFile;
+      if (_isTafseer) {
+        jsonFile = 'assets/data/surah_${_surahNumber}_${_language}_tafseer.json';
+      } else {
+        jsonFile = 'assets/data/surah_${_surahNumber}_$_language.json';
+      }
+
+      final String jsonString = await rootBundle.loadString(jsonFile);
+      final Map<String, dynamic> jsonData = json.decode(jsonString);
+
+      setState(() {
+        _surahName = jsonData['name'] ?? 'Surah $_surahNumber';
+        _verses = List<Map<String, dynamic>>.from(jsonData['verses'] ?? []);
+        _filteredVerses = List<Map<String, dynamic>>.from(_verses);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading surah data: $e');
+
+      // Fallback: Try to load basic structure
+      _createFallbackData();
+    }
+  }
+
+  void _createFallbackData() {
+    setState(() {
+      _surahName = 'Surah $_surahNumber';
+      _verses = List.generate(7, (index) => {
+        'verse_number': index + 1,
+        'arabic': 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
+        'translation': 'In the name of Allah, the Most Gracious, the Most Merciful.',
+        'transliteration': 'Bismillahi r-rahmani r-rahim',
+      });
+      _filteredVerses = List.from(_verses);
+      _isLoading = false;
+    });
+  }
+
+  void _filterVerses(String query) {
+    _debounceTimer?.cancel();
+
+    if (query.isEmpty) {
+      setState(() {
+        _filteredVerses = _verses;
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+    });
+
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      final results = _verses.where((verse) {
+        final verseNumber = verse['verse_number']?.toString() ?? '';
+        final arabic = verse['arabic']?.toString().toLowerCase() ?? '';
+        final translation = verse['translation']?.toString().toLowerCase() ?? '';
+        final transliteration = verse['transliteration']?.toString().toLowerCase() ?? '';
+        final tafseer = verse['tafseer']?.toString().toLowerCase() ?? '';
+        final searchQuery = query.toLowerCase().trim();
+
+        // Search by verse number patterns
+        if (_isVerseNumberPattern(searchQuery)) {
+          return _matchesVerseNumberPattern(verseNumber, searchQuery);
+        }
+
+        // Search in all text fields
+        return arabic.contains(searchQuery) ||
+            translation.contains(searchQuery) ||
+            transliteration.contains(searchQuery) ||
+            tafseer.contains(searchQuery) ||
+            verseNumber.contains(searchQuery);
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _filteredVerses = results;
+          _isSearching = false;
+        });
+      }
+    });
+  }
+
+  bool _isVerseNumberPattern(String query) {
+    // Check if query matches patterns like: "1", "1:2", "1:2-5", "2-5", "1:2:3" etc.
+    final versePattern = RegExp(r'^(\d+)[:-]?(\d+)?[-:]?(\d+)?$');
+    return versePattern.hasMatch(query);
+  }
+
+  bool _matchesVerseNumberPattern(String verseNumber, String query) {
+    try {
+      final currentVerse = int.tryParse(verseNumber) ?? 0;
+
+      // Handle single number (e.g., "5")
+      if (RegExp(r'^\d+$').hasMatch(query)) {
+        final searchNum = int.tryParse(query) ?? 0;
+        return currentVerse == searchNum;
+      }
+
+      // Handle surah:verse pattern (e.g., "2:255")
+      if (query.contains(':')) {
+        final parts = query.split(':');
+        if (parts.length == 2) {
+          final surahPart = int.tryParse(parts[0]) ?? 0;
+          final verseStr = parts[1].trim();
+          if (verseStr.isEmpty) {
+            // FIXED: If surah: with no verse (e.g., "2:"), match all verses if surah matches current
+            return surahPart == _surahNumber;
+          }
+          final versePart = int.tryParse(verseStr) ?? 0;
+          // If surah matches current surah and verse matches
+          if (surahPart == _surahNumber && versePart == currentVerse) {
+            return true;
+          }
+        }
+      }
+
+      // Handle range pattern (e.g., "5-10")
+      if (query.contains('-')) {
+        final rangeParts = query.split('-');
+        if (rangeParts.length == 2) {
+          final start = int.tryParse(rangeParts[0]) ?? 0;
+          final end = int.tryParse(rangeParts[1]) ?? 0;
+          return currentVerse >= start && currentVerse <= end;
+        }
+      }
+
+      // Handle combined pattern (e.g., "2:5-10")
+      if (query.contains(':') && query.contains('-')) {
+        final mainParts = query.split(':');
+        if (mainParts.length == 2 && mainParts[0] == _surahNumber.toString()) {
+          final rangeParts = mainParts[1].split('-');
+          if (rangeParts.length == 2) {
+            final start = int.tryParse(rangeParts[0]) ?? 0;
+            final end = int.tryParse(rangeParts[1]) ?? 0;
+            return currentVerse >= start && currentVerse <= end;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error parsing verse number pattern: $e');
+    }
+
+    return false;
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _filterVerses('');
+    // FIXED: Hide the search bar on clear
+    setState(() {
+      _showSearchBar = false;
+    });
+    _searchFocusNode.unfocus();
+  }
+
+  // FIXED: Improved toggle to use explicit state and post-frame focus request
+  void _toggleSearch() {
+    setState(() {
+      _showSearchBar = !_showSearchBar;
+    });
+
+    if (_showSearchBar) {
+      // Request focus after the frame is built (TextField is now in the tree)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _searchFocusNode.requestFocus();
+        }
+      });
+    } else {
+      _searchFocusNode.unfocus();
+      _clearSearch(); // This will set _showSearchBar = false again, but safe
+    }
+  }
+
+  void _showSettings() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SurahSettingsDialog(
+        language: _language,
+        surahNumber: _surahNumber,
+        isTafseer: _isTafseer,
+      ),
+    );
+  }
+
+  void _shareVerse(int verseNumber, String arabic, String translation) {
+    final verseText = '$_surahNumber:$verseNumber\n$arabic\n\n$translation';
+    Share.share(verseText);
+  }
+
+  void _copyVerse(int verseNumber, String arabic, String translation) {
+    final verseText = '$_surahNumber:$verseNumber\n$arabic\n\n$translation';
+    Clipboard.setData(ClipboardData(text: verseText));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Verse $_surahNumber:$verseNumber copied to clipboard')),
+    );
+  }
+
+  void _toggleBookmark(int verseNumber, Map<String, dynamic> verseData) {
+    final settingsService = Provider.of<SettingsService>(context, listen: false);
+    settingsService.toggleBookmark(
+      surahNumber: _surahNumber,
+      verseNumber: verseNumber,
+      verseData: verseData,
+      language: _language,
+      isTafseer: _isTafseer,
+    );
+
+    final isBookmarked = settingsService.isBookmarked(
+      _surahNumber,
+      verseNumber,
+      _language,
+      _isTafseer,
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isBookmarked
+            ? 'Verse $_surahNumber:$verseNumber bookmarked'
+            : 'Bookmark removed for verse $_surahNumber:$verseNumber'),
+      ),
+    );
+  }
+
+  void _scrollToVerse(int verseNumber) {
+    final index = _filteredVerses.indexWhere((verse) =>
+    (verse['verse_number'] as int? ?? 0) == verseNumber);
+
+    if (index != -1) {
+      _scrollController.animateTo(
+        index * 200.0, // Approximate height per verse card
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settingsService = Provider.of<SettingsService>(context);
+    final fontScale = settingsService.fontScale;
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('$name - Surah $number'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Colors.white,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
-              Icons.menu_book,
-              size: 64,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 16),
             Text(
-              '$name - Surah $number',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              _surahName,
+              style: TextStyle(fontSize: 18 * fontScale),
             ),
-            const SizedBox(height: 8),
             Text(
-              'Language: ${language[0].toUpperCase() + language.substring(1)}',
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'This page is under construction',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Go Back'),
+              'Surah $_surahNumber • ${_verses.length} verses',
+              style: TextStyle(fontSize: 12 * fontScale),
             ),
           ],
         ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: _toggleSearch,
+            tooltip: 'Search verses',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: _showSettings,
+            tooltip: 'Settings',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // FIXED: Search Bar now controlled by explicit _showSearchBar state
+          if (_showSearchBar)
+            GestureDetector(
+              onTap: _clearSearch, // FIXED: Tap outside TextField to hide (via GestureDetector)
+              child: Container(
+                color: Colors.transparent,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16.0),
+                      decoration: BoxDecoration(
+                        color: theme.cardColor,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _searchController,
+                            focusNode: _searchFocusNode,
+                            decoration: InputDecoration(
+                              hintText: 'Search by verse number (1, 2:255, 5-10) or text...',
+                              prefixIcon: _isSearching
+                                  ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: Padding(
+                                  padding: EdgeInsets.all(12.0),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                                  : const Icon(Icons.search),
+                              suffixIcon: _searchController.text.isNotEmpty
+                                  ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: _clearSearch,
+                              )
+                                  : null,
+                              filled: true,
+                              fillColor: theme.scaffoldBackgroundColor,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12.0),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                                vertical: 12.0,
+                              ),
+                            ),
+                          ),
+                          if (_searchController.text.isNotEmpty && !_isSearching) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Text(
+                                  '${_filteredVerses.length} verses found',
+                                  style: TextStyle(
+                                    fontSize: 12 * fontScale,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                                ),
+                                const Spacer(),
+                                if (_filteredVerses.isNotEmpty)
+                                  TextButton(
+                                    onPressed: () {
+                                      _scrollController.animateTo(
+                                        0,
+                                        duration: const Duration(milliseconds: 300),
+                                        curve: Curves.easeInOut,
+                                      );
+                                    },
+                                    child: Text(
+                                      'Scroll to top',
+                                      style: TextStyle(
+                                        fontSize: 12 * fontScale,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            // Search tips
+                            Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.all(8.0),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.lightbulb_outline,
+                                      size: 16 * fontScale,
+                                      color: theme.colorScheme.primary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Tip: Search with "verse", "surah:verse", or "start-end"',
+                                      style: TextStyle(
+                                        fontSize: 10 * fontScale,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          // Verses List
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Consumer<SettingsService>(
+              builder: (context, settings, child) {
+                return Container(
+                  color: settings.backgroundColor,
+                  child: _filteredVerses.isEmpty && _showSearchBar && _searchController.text.isNotEmpty
+                      ? _buildNoResults(theme, fontScale)
+                      : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16.0),
+                    itemCount: _filteredVerses.length,
+                    itemBuilder: (context, index) {
+                      final verse = _filteredVerses[index];
+                      final verseNumber = verse['verse_number'] as int? ?? index + 1;
+                      final isBookmarked = settings.isBookmarked(
+                          _surahNumber,
+                          verseNumber,
+                          _language,
+                          _isTafseer
+                      );
+
+                      return VerseCard(
+                        surahNumber: _surahNumber,
+                        verseNumber: verseNumber,
+                        arabic: verse['arabic'] ?? '',
+                        translation: verse['translation'] ?? '',
+                        transliteration: verse['transliteration'] ?? '',
+                        tafseer: verse['tafseer'] ?? '',
+                        language: _language,
+                        isTafseer: _isTafseer,
+                        isBookmarked: isBookmarked,
+                        displaySettings: settings.surahDisplaySettings[_language] ??
+                            SurahDisplaySettings.defaultFor(_language),
+                        onShare: () => _shareVerse(
+                            verseNumber,
+                            verse['arabic'] ?? '',
+                            verse['translation'] ?? ''
+                        ),
+                        onCopy: () => _copyVerse(
+                            verseNumber,
+                            verse['arabic'] ?? '',
+                            verse['translation'] ?? ''
+                        ),
+                        onBookmark: () => _toggleBookmark(verseNumber, verse),
+                        fontScale: fontScale,
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoResults(ThemeData theme, double fontScale) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 64 * fontScale,
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No verses found',
+              style: TextStyle(
+                fontSize: 18 * fontScale,
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Try searching with different keywords or verse numbers',
+              style: TextStyle(
+                fontSize: 14 * fontScale,
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            // Search examples
+            Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Search Examples:',
+                    style: TextStyle(
+                      fontSize: 14 * fontScale,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSearchExample('Verse number', '5', fontScale),
+                  _buildSearchExample('Surah:Verse', '2:255', fontScale),
+                  _buildSearchExample('Verse range', '5-10', fontScale),
+                  _buildSearchExample('Text search', 'mercy', fontScale),
+                  _buildSearchExample('Arabic text', 'الرحمن', fontScale),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchExample(String title, String example, double fontScale) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          Text(
+            '$title: ',
+            style: TextStyle(
+              fontSize: 12 * fontScale,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              example,
+              style: TextStyle(
+                fontSize: 11 * fontScale,
+                fontFamily: 'Monospace',
+                color: Colors.blue[700],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

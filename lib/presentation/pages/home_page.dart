@@ -130,7 +130,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
       'emoji': '📕'
     },
     {
-      'title': 'हिन्दी क़ुरआन',
+      'title': 'हिन्दी क़ुरान',
       'icon': 'assets/icons/quran_hindi.svg',
       'route': '/surahList',
       'params': {'language': 'hindi'},
@@ -160,9 +160,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     {
       'title': 'Saved Verses',
       'icon': 'assets/icons/bookmark.svg',
-      'route': '/bookmarks',
+      'route': '/bookmarks', // Updated route to match the new bookmarks page // Updated route to match the new bookmarks page
       'params': null,
-      'emoji': '🔖'
+      'emoji': '⭐' // Changed emoji to star
     },
   ];
 

@@ -58,9 +58,9 @@ class _SurahCardState extends State<SurahCard>
       context,
       '/surahDetail',
       arguments: {
-        'number': widget.number,
-        'name': widget.name,
+        'surahNumber': widget.number,
         'language': widget.language,
+        'isTafseer': false, // Set to true for tafseer pages
       },
     );
   }
@@ -82,62 +82,56 @@ class _SurahCardState extends State<SurahCard>
         builder: (context, child) {
           return Transform.scale(
             scale: _scaleAnimation.value,
-            child: Container(
+            child: Card(
               margin: const EdgeInsets.only(bottom: 12.0),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
+              elevation: 2,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12.0),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 5,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    // Surah number
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8.0),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${widget.number}',
-                          style: TextStyle(
-                            fontSize: 16 * widget.fontScale,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(16.0),
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8.0),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${widget.number}',
+                      style: TextStyle(
+                        fontSize: 16 * widget.fontScale,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
                       ),
                     ),
-                    const SizedBox(width: 16.0),
-                    // Surah name
-                    Expanded(
-                      child: Text(
-                        widget.name,
-                        style: TextStyle(
-                          fontSize: 16 * widget.fontScale,
-                          fontWeight: FontWeight.w500,
-                          color: theme.colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                    // Arrow icon
-                    Icon(
-                      Icons.arrow_forward_ios,
-                      size: 16,
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ],
+                  ),
                 ),
+                title: Text(
+                  widget.name,
+                  style: TextStyle(
+                    fontSize: 16 * widget.fontScale,
+                    fontWeight: FontWeight.w500,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                trailing: Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                ),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/surahDetail',
+                    arguments: {
+                      'surahNumber': widget.number,
+                      'language': widget.language,
+                      'isTafseer': false, // Set to true for tafseer pages
+                    },
+                  );
+                },
               ),
             ),
           );

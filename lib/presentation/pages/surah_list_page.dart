@@ -32,6 +32,7 @@ class _SurahListPageState extends State<SurahListPage>
   Timer? _debounceTimer;
   bool _isInitialized = false;
   bool _isTafseer = false; // Add a new variable to track if this is a tafseer view
+  PageRoute<dynamic>? _savedRoute; // Add this: Store route reference safely
 
   @override
   void initState() {
@@ -76,8 +77,11 @@ class _SurahListPageState extends State<SurahListPage>
       _updateTitle();
     }
 
-    // Subscribe to the global RouteObserver instance.
+    // Get and save route reference here (safe)
     final modalRoute = ModalRoute.of(context);
+    _savedRoute = modalRoute is PageRoute ? modalRoute : null; // Add this line
+
+    // Subscribe to the global RouteObserver instance.
     if (modalRoute is PageRoute) {
       routeObserver.subscribe(this, modalRoute as PageRoute<dynamic>);
     }
@@ -110,10 +114,12 @@ class _SurahListPageState extends State<SurahListPage>
     _searchController.dispose();
     _scrollController.dispose();
     _debounceTimer?.cancel();
-    final modalRoute = ModalRoute.of(context);
-    if (modalRoute is PageRoute) {
+
+    // Use saved route reference instead of looking it up
+    if (_savedRoute != null) { // Change this block
       routeObserver.unsubscribe(this);
     }
+
     super.dispose();
   }
 
