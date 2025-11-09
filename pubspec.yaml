@@ -14,6 +14,11 @@ dependencies:
 
   share_plus: ^7.0.1
 
+  # BLoC Dependencies
+  bloc: ^8.1.3  # Added explicit for direct imports
+  flutter_bloc: ^8.1.3
+  equatable: ^2.0.5
+
   # State Management
   provider: ^6.1.1
 
@@ -29,7 +34,6 @@ dependencies:
   # SVG Images
   flutter_svg: ^2.0.9
 
-
   vector_math: ^2.1.4
 
   flutter_launcher_icons: "^0.13.1" # Use the latest version
@@ -43,6 +47,8 @@ dependencies:
   # Audio Player for Tasbeeh sound and Azan
   audioplayers: ^5.2.1
 
+  rxdart: ^0.27.7
+
   # Date formatting for Tasbeeh history and prayer times
   intl: ^0.18.1
 
@@ -50,7 +56,7 @@ dependencies:
   path_provider: ^2.1.1
 
   # Location services for Namaz Times
-  geolocator: ^10.1.0
+  geolocator: ^12.0.0  # Updated for better compatibility
   geocoding: ^2.1.1
 
   # HTTP requests for API calls
@@ -61,8 +67,8 @@ dependencies:
   table_calendar: ^3.0.9
 
   # Compass for Qibla direction - using alternative package
-  sensors_plus: ^4.0.2
-  permission_handler: ^11.1.0
+  sensors_plus: ^5.0.1  # Updated for stream API stability
+  permission_handler: ^11.3.1  # Minor update for permissions
 
 dev_dependencies:
   flutter_test:

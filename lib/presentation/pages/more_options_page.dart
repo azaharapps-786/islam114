@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:provider/provider.dart';
+// Note: Ensure you have the 'haptic_feedback' package in your pubspec.yaml
 import 'package:haptic_feedback/haptic_feedback.dart';
 
-import '../../core/services/settings_service.dart';
-import '../widgets/more_option_card.dart';
+// IMPORTANT: Replace these with your actual import paths
+import '../../core/services/settings_service.dart'; // Placeholder
+import '../widgets/more_option_card.dart'; // Placeholder 
+
+// --- Main Page Widget ---
 
 class MoreOptionsPage extends StatefulWidget {
   const MoreOptionsPage({super.key});
@@ -24,56 +28,42 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
   void initState() {
     super.initState();
 
-    // Polished iOS-style and Origin OS 6-inspired bouncy animation with staggered card entrances
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 1000), // Extended duration for longer, smoother fluidity
+      duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
 
-    // Staggered animations for individual cards to enhance fluidity like Origin OS 6 layered reveals
-    // Adjusted stagger and capped ends to ensure end <= 1.0 for all intervals to prevent assertion failure
-    final stagger = 0.08; // Slightly increased stagger for more deliberate, smoother sequencing
+    // Animation setup remains the same
+    const stagger = 0.08;
     _cardFadeAnimations = List.generate(6, (index) {
       final begin = index * stagger;
-      final end = math.min(1.0, 0.85 + (index * stagger)); // Cap end at 1.0
+      final end = math.min(1.0, 0.85 + (index * stagger));
       return Tween<double>(begin: 0.0, end: 1.0).animate(
         CurvedAnimation(
           parent: _controller,
-          curve: Interval(
-            begin,
-            end,
-            curve: Curves.easeOutQuint, // Smoother easing curve for gradual fade
-          ),
+          curve: Interval(begin, end, curve: Curves.easeOutQuint),
         ),
       );
     });
 
     _cardScaleAnimations = List.generate(6, (index) {
       final begin = 0.05 + (index * stagger);
-      final end = math.min(1.0, 0.9 + (index * stagger)); // Cap end at 1.0
-      return Tween<double>(begin: 0.9, end: 1.0).animate( // Slightly smaller initial scale for more pronounced bounce
+      final end = math.min(1.0, 0.9 + (index * stagger));
+      return Tween<double>(begin: 0.9, end: 1.0).animate(
         CurvedAnimation(
           parent: _controller,
-          curve: Interval(
-            begin,
-            end,
-            curve: Curves.elasticOut, // Bouncy elastic curve for enhanced Apple-like overshoot
-          ),
+          curve: Interval(begin, end, curve: Curves.elasticOut),
         ),
       );
     });
 
     _cardBounceAnimations = List.generate(6, (index) {
       final begin = 0.1 + (index * stagger);
-      final end = math.min(1.0, 0.95 + (index * stagger)); // Cap end at 1.0
-      return Tween<double>(begin: 20.0, end: 0.0).animate( // Vertical bounce from below
+      final end = math.min(1.0, 0.95 + (index * stagger));
+      return Tween<double>(begin: 20.0, end: 0.0).animate(
         CurvedAnimation(
           parent: _controller,
-          curve: Interval(
-            begin,
-            end,
-            curve: Curves.elasticOut, // Sync with scale for cohesive bouncy effect
-          ),
+          curve: Interval(begin, end, curve: Curves.elasticOut),
         ),
       );
     });
@@ -88,281 +78,50 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
   }
 
   final List<Map<String, dynamic>> _moreOptions = [
-    {
-      'title': 'Rabbana Duas',
-      'icon': Icons.menu_book_outlined,
-      'color': Colors.green,
-      'route': '/rabbanaDuas',
-    },
-    {
-      'title': 'Darood',
-      'icon': Icons.favorite_border,
-      'color': Colors.red,
-      'route': '/daroodIbrahim',
-    },
-    {
-      'title': 'Niyat',
-      'icon': Icons.mosque_outlined,
-      'color': Colors.blue,
-      'route': '/niyat',
-    },
-    {
-      'title': 'Library',
-      'icon': Icons.auto_stories,
-      'color': Colors.purple,
-      'route': '/library',
-    },
-    {
-      'title': 'Quran & Science',
-      'icon': Icons.science_outlined,
-      'color': Colors.teal,
-      'route': '/quranScience',
-    },
-    {
-      'title': '99 Names',
-      'icon': Icons.star_border,
-      'color': Colors.amber,
-      'route': '/allahNames',
-    },
+    {'title': 'Rabbana Duas', 'icon': Icons.menu_book_outlined, 'color': Colors.green, 'route': '/rabbanaDuas'},
+    {'title': 'Darood', 'icon': Icons.favorite_border, 'color': Colors.red, 'route': '/daroodIbrahim'},
+    {'title': 'Niyat', 'icon': Icons.mosque_outlined, 'color': Colors.blue, 'route': '/niyat'},
+    {'title': 'Library', 'icon': Icons.auto_stories, 'color': Colors.purple, 'route': '/library'},
+    {'title': 'Quran & Science', 'icon': Icons.science_outlined, 'color': Colors.teal, 'route': '/quranScience'},
+    {'title': '99 Names', 'icon': Icons.star_border, 'color': Colors.amber, 'route': '/allahNames'},
   ];
 
+  // The dialog function remains the same, calling the updated private widget
   void _showLanguageSelectionDialog(BuildContext context, String route, String title) {
-    final double fontScale = Provider.of<SettingsService>(context, listen: false).fontScale;
-
-    showDialog(
+    showGeneralDialog(
       context: context,
+      barrierLabel: 'Language Selection',
       barrierDismissible: true,
-      barrierColor: Colors.black54,
-      builder: (BuildContext context) {
-        return Center(
-          child: Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+      barrierColor: Colors.black.withOpacity(0.5),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        // This is where the new, polished widget is called
+        return _MoreOptionsLanguageDialog(route: route, title: title);
+      },
+      transitionBuilder: (context, animation1, animation2, child) {
+        // The bounce-in animation for the dialog
+        return FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation1,
+            curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
+          ),
+          child: ScaleTransition(
+            scale: CurvedAnimation(
+              parent: animation1,
+              curve: const Interval(0.0, 1.0, curve: Curves.elasticOut),
             ),
-            elevation: 16,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) {
-                return Transform.scale(
-                  scale: 0.9 + (value * 0.1), // Scale from 0.9 to 1.0 for subtle growth
-                  child: Opacity(
-                    opacity: value, // Fade from 0.0 to 1.0
-                    child: child,
-                  ),
-                );
-              },
-              child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.85,
-                  maxHeight: MediaQuery.of(context).size.height * 0.7,
-                ),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.language,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 28,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Select Language',
-                          style: TextStyle(
-                            fontSize: 22 * fontScale,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildLanguageOption(
-                              context: context,
-                              language: 'English',
-                              route: route,
-                              title: title,
-                              fontScale: fontScale,
-                              isAvailable: true,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildLanguageOption(
-                              context: context,
-                              language: 'Assamese',
-                              route: route,
-                              title: title,
-                              fontScale: fontScale,
-                              isAvailable: true,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildLanguageOption(
-                              context: context,
-                              language: 'Hindi',
-                              route: route,
-                              title: title,
-                              fontScale: fontScale,
-                              isAvailable: true,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildLanguageOption(
-                              context: context,
-                              language: 'Bengali',
-                              route: route,
-                              title: title,
-                              fontScale: fontScale,
-                              isAvailable: true,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildLanguageOption(
-                              context: context,
-                              language: 'More Languages',
-                              route: route,
-                              title: title,
-                              fontScale: fontScale,
-                              isAvailable: false,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'Cancel',
-                          style: TextStyle(
-                            fontSize: 16 * fontScale,
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            child: child,
           ),
         );
       },
     );
   }
 
-  Widget _buildLanguageOption({
-    required BuildContext context,
-    required String language,
-    required String route,
-    required String title,
-    required double fontScale,
-    required bool isAvailable,
-  }) {
-    final theme = Theme.of(context);
-
-    return Material(
-      color: isAvailable
-          ? theme.colorScheme.primary.withOpacity(0.08)
-          : Colors.grey.withOpacity(0.12),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: isAvailable
-            ? () {
-          Navigator.of(context).pop();
-          Navigator.pushNamed(
-            context,
-            route,
-            arguments: {
-              'language': language.toLowerCase(),
-              'title': title,
-            },
-          );
-        }
-            : null,
-        borderRadius: BorderRadius.circular(16),
-        splashColor: theme.colorScheme.primary.withOpacity(0.1),
-        highlightColor: theme.colorScheme.primary.withOpacity(0.05),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: isAvailable
-                      ? theme.colorScheme.primary.withOpacity(0.15)
-                      : Colors.grey.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.language,
-                  color: isAvailable
-                      ? theme.colorScheme.primary
-                      : Colors.grey,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  language,
-                  style: TextStyle(
-                    fontSize: 16 * fontScale,
-                    fontWeight: FontWeight.w600,
-                    color: isAvailable
-                        ? theme.colorScheme.onSurface
-                        : Colors.grey,
-                  ),
-                ),
-              ),
-              if (!isAvailable)
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.lock_outline,
-                    color: Colors.grey,
-                    size: 18,
-                  ),
-                )
-              else
-                Icon(
-                  Icons.arrow_forward_ios,
-                  color: theme.colorScheme.primary.withOpacity(0.5),
-                  size: 16,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Note: Provider is accessed with 'listen: true' here for real-time updates if settings change
     final double fontScale = Provider.of<SettingsService>(context).fontScale;
     final theme = Theme.of(context);
-    final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
@@ -417,14 +176,13 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
           itemCount: _moreOptions.length,
           itemBuilder: (context, index) {
             final option = _moreOptions[index];
-            // Individual card animations for staggered, polished reveal on visible background
             return AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
                 return Opacity(
                   opacity: _cardFadeAnimations[index].value,
                   child: Transform.translate(
-                    offset: Offset(0, _cardBounceAnimations[index].value), // Add vertical bounce
+                    offset: Offset(0, _cardBounceAnimations[index].value),
                     child: Transform.scale(
                       scale: _cardScaleAnimations[index].value,
                       child: MoreOptionCard(
@@ -443,6 +201,178 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
                 );
               },
             );
+          },
+        );
+      },
+    );
+  }
+}
+
+// --- REDESIGNED LANGUAGE DIALOG WIDGET ---
+
+class _MoreOptionsLanguageDialog extends StatelessWidget {
+  final String route;
+  final String title;
+
+  const _MoreOptionsLanguageDialog({
+    required this.route,
+    required this.title,
+  });
+
+  // A simplified list for the demonstration. Add more as needed.
+  final List<String> availableLanguages = const [
+    'English',
+    'Assamese',
+    'Hindi',
+    'Bengali',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    // Provider is accessed with 'listen: false' as the dialog itself doesn't need to rebuild on setting changes
+    final double fontScale = Provider.of<SettingsService>(context, listen: false).fontScale;
+    final theme = Theme.of(context);
+
+    // We wrap our content in a Center to ensure it respects the showGeneralDialog
+    // pageBuilder (which takes up the full screen) and appears centered.
+    return Center(
+      child: Material( // Material widget for proper theming/elevation
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(28.0), // M3 corner radius
+        elevation: 10,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 16.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 320,
+              maxHeight: 400, // Max height to allow scroll if more languages are added
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Title
+                Text(
+                  'Select Language',
+                  textAlign: TextAlign.start,
+                  style: TextStyle(
+                    fontSize: (20 * fontScale).clamp(18.0, 24.0),
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Language List (Scrollable)
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: availableLanguages.length,
+                    separatorBuilder: (context, index) => Divider(
+                      height: 1,
+                      color: theme.colorScheme.outlineVariant.withOpacity(0.3),
+                      indent: 16,
+                      endIndent: 16,
+                    ),
+                    itemBuilder: (context, index) {
+                      final language = availableLanguages[index];
+                      return _buildLanguageTile(
+                        context,
+                        language,
+                        fontScale,
+                        theme,
+                      );
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Footer Buttons (Cancel and More Languages)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Haptics.vibrate(HapticsType.light);
+                        Navigator.of(context).pop();
+                      },
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: (15 * fontScale).clamp(13.0, 17.0),
+                          fontWeight: FontWeight.w500,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Action for languages not in the main list
+                    TextButton(
+                      onPressed: () {
+                        Haptics.vibrate(HapticsType.medium);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('More languages coming soon')),
+                        );
+                      },
+                      child: Text(
+                        'More Languages',
+                        style: TextStyle(
+                          fontSize: (15 * fontScale).clamp(13.0, 17.0),
+                          fontWeight: FontWeight.w500,
+                          color: theme.colorScheme.secondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Helper method now uses a proper ListTile for better standard design
+  Widget _buildLanguageTile(
+      BuildContext context,
+      String language,
+      double fontScale,
+      ThemeData theme
+      ) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
+      leading: Icon(
+        Icons.translate,
+        color: theme.colorScheme.primary,
+      ),
+      title: Text(
+        language,
+        style: TextStyle(
+          fontSize: (16 * fontScale).clamp(14.0, 18.0),
+          fontWeight: FontWeight.w500,
+          color: theme.colorScheme.onSurface,
+        ),
+      ),
+      trailing: Icon(
+        Icons.arrow_forward_ios,
+        color: theme.colorScheme.primary.withOpacity(0.5),
+        size: 14,
+      ),
+      onTap: () async {
+        if (await Haptics.canVibrate()) {
+          Haptics.vibrate(HapticsType.light); // Subtle feedback on selection
+        }
+
+        Navigator.of(context).pop();
+        // Navigate to the feature route with the selected language
+        Navigator.pushNamed(
+          context,
+          route,
+          arguments: {
+            'language': language.toLowerCase(),
+            'title': title,
           },
         );
       },
