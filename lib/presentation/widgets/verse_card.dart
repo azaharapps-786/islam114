@@ -1,16 +1,18 @@
+// lib/presentation/widgets/verse_card.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:provider/provider.dart';
 
-import '../../core/services/settings_service.dart'; // Updated import
+import '../../core/services/settings_service.dart';
 
-class VerseCard extends StatelessWidget {
+class VerseCard extends StatefulWidget {
   final int surahNumber;
   final int verseNumber;
   final String arabic;
   final String translation;
   final String transliteration;
   final String tafseer;
+  final String footnotes;
   final String language;
   final bool isTafseer;
   final bool isBookmarked;
@@ -28,6 +30,7 @@ class VerseCard extends StatelessWidget {
     required this.translation,
     required this.transliteration,
     required this.tafseer,
+    this.footnotes = '',
     required this.language,
     required this.isTafseer,
     required this.isBookmarked,
@@ -39,199 +42,305 @@ class VerseCard extends StatelessWidget {
   });
 
   @override
+  State<VerseCard> createState() => _VerseCardState();
+}
+
+class _VerseCardState extends State<VerseCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  bool _isExpanded = false;
+  bool _showFootnotes = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.98,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onTapDown(TapDownDetails details) {
+    _controller.forward();
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    _controller.reverse();
+  }
+
+  void _onTapCancel() {
+    _controller.reverse();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final settings = Provider.of<SettingsService>(context);
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Verse Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '$surahNumber:$verseNumber',
-                    style: TextStyle(
-                      fontSize: 14 * fontScale,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ),
-                // Action Buttons
-                Row(
-                  children: [
-                    // Star bookmark icon - updated from bookmark to star
-                    IconButton(
-                      icon: Icon(
-                        isBookmarked ? Icons.star : Icons.star_border,
-                        color: isBookmarked ? Colors.amber : Colors.grey,
+    return AnimatedBuilder(
+      animation: _scaleAnimation,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scaleAnimation.value,
+          child: Card(
+            margin: const EdgeInsets.only(bottom: 16.0),
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12.0),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Verse header with number and bookmark button
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        child: Text(
+                          '${widget.surahNumber}:${widget.verseNumber}',
+                          style: TextStyle(
+                            fontSize: 14 * widget.fontScale,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
                       ),
-                      onPressed: onBookmark,
-                      tooltip: isBookmarked ? 'Remove bookmark' : 'Bookmark verse',
+                      const Spacer(),
+                      // Bookmark button - CHANGED TO STAR ICON
+                      IconButton(
+                        icon: Icon(
+                          // Use star icon instead of bookmark
+                          widget.isBookmarked ? Icons.star : Icons.star_border,
+                          color: widget.isBookmarked
+                              ? Colors.amber // Use amber color for filled star
+                              : theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                        onPressed: widget.onBookmark,
+                        tooltip: widget.isBookmarked ? 'Remove bookmark' : 'Add bookmark',
+                      ),
+                      // More options button
+                      PopupMenuButton<String>(
+                        icon: Icon(
+                          Icons.more_vert,
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                        onSelected: (value) {
+                          switch (value) {
+                            case 'share':
+                              widget.onShare();
+                              break;
+                            case 'copy':
+                              widget.onCopy();
+                              break;
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'share',
+                            child: Row(
+                              children: [
+                                Icon(Icons.share, size: 20),
+                                const SizedBox(width: 8),
+                                Text('Share'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'copy',
+                            child: Row(
+                              children: [
+                                Icon(Icons.copy, size: 20),
+                                const SizedBox(width: 8),
+                                Text('Copy'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Arabic text
+                  if (widget.displaySettings.showArabic && widget.arabic.isNotEmpty) ...[
+                    Text(
+                      widget.arabic,
+                      style: TextStyle(
+                        fontSize: 20 * widget.fontScale,
+                        fontFamily: 'Uthmanic',
+                        height: 1.5,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                      textAlign: TextAlign.right,
                     ),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert),
-                      itemBuilder: (context) => [
-                        PopupMenuItem(
-                          value: 'share',
-                          child: Row(
-                            children: [
-                              const Icon(Icons.share, size: 20),
-                              const SizedBox(width: 8),
-                              Text('Share', style: TextStyle(fontSize: 14 * fontScale)),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'copy',
-                          child: Row(
-                            children: [
-                              const Icon(Icons.content_copy, size: 20),
-                              const SizedBox(width: 8),
-                              Text('Copy', style: TextStyle(fontSize: 14 * fontScale)),
-                            ],
-                          ),
-                        ),
-                      ],
-                      onSelected: (value) {
-                        if (value == 'share') onShare();
-                        if (value == 'copy') onCopy();
+                    const SizedBox(height: 12),
+                  ],
+
+                  // Transliteration
+                  if (widget.displaySettings.showTransliteration && widget.transliteration.isNotEmpty) ...[
+                    Text(
+                      widget.transliteration,
+                      style: TextStyle(
+                        fontSize: 14 * widget.fontScale,
+                        fontStyle: FontStyle.italic,
+                        color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      ),
+                      textAlign: TextAlign.left,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // Translation
+                  if (widget.displaySettings.showTranslation && widget.translation.isNotEmpty) ...[
+                    Text(
+                      widget.translation,
+                      style: TextStyle(
+                        fontSize: 16 * widget.fontScale,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                      textAlign: TextAlign.left,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // Footnotes (if available)
+                  if (widget.footnotes.isNotEmpty) ...[
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _showFootnotes = !_showFootnotes;
+                        });
                       },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.secondary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: theme.colorScheme.secondary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Footnotes',
+                              style: TextStyle(
+                                fontSize: 12 * widget.fontScale,
+                                color: theme.colorScheme.secondary,
+                              ),
+                            ),
+                            const Spacer(),
+                            Icon(
+                              _showFootnotes ? Icons.expand_less : Icons.expand_more,
+                              size: 16,
+                              color: theme.colorScheme.secondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_showFootnotes)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.secondary.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: theme.colorScheme.secondary.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Text(
+                          widget.footnotes,
+                          style: TextStyle(
+                            fontSize: 12 * widget.fontScale,
+                            color: theme.colorScheme.onSurface.withOpacity(0.8),
+                          ),
+                        ),
+                      ),
+                  ],
+
+                  // Tafseer (if available and enabled)
+                  if (widget.isTafseer && widget.displaySettings.showTafseer && widget.tafseer.isNotEmpty) ...[
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isExpanded = !_isExpanded;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: theme.colorScheme.primary.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Tafseer',
+                                  style: TextStyle(
+                                    fontSize: 14 * widget.fontScale,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Icon(
+                                  _isExpanded ? Icons.expand_less : Icons.expand_more,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ],
+                            ),
+                            if (_isExpanded) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                widget.tafseer,
+                                style: TextStyle(
+                                  fontSize: 14 * widget.fontScale,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                   ],
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // Arabic Text
-            if (displaySettings.showArabic && arabic.isNotEmpty)
-              _buildTextSection(
-                text: arabic,
-                style: TextStyle(
-                  fontSize: 20 * fontScale,
-                  fontFamily: 'Uthmanic',
-                  height: 1.8,
-                ),
-                alignment: TextAlign.right,
+                ],
               ),
-
-            // Transliteration
-            if (displaySettings.showTransliteration && transliteration.isNotEmpty)
-              _buildTextSection(
-                text: transliteration,
-                style: TextStyle(
-                  fontSize: 14 * fontScale,
-                  fontStyle: FontStyle.italic,
-                  color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  height: 1.4,
-                ),
-              ),
-
-            // Main Translation
-            if (displaySettings.showTranslation && translation.isNotEmpty)
-              _buildTextSection(
-                text: translation,
-                style: TextStyle(
-                  fontSize: 16 * fontScale,
-                  height: 1.6,
-                ),
-              ),
-
-            // Tafseer
-            if (displaySettings.showTafseer && tafseer.isNotEmpty)
-              _buildTextSection(
-                text: tafseer,
-                style: TextStyle(
-                  fontSize: 14 * fontScale,
-                  color: theme.colorScheme.onSurface.withOpacity(0.8),
-                  fontStyle: FontStyle.italic,
-                  height: 1.5,
-                ),
-                isTafseer: true,
-              ),
-
-            // Additional Translations
-            ..._buildAdditionalTranslations(theme),
-
-            // Additional Tafseers
-            ..._buildAdditionalTafseers(theme),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextSection({
-    required String text,
-    required TextStyle style,
-    TextAlign alignment = TextAlign.left,
-    bool isTafseer = false,
-  }) {
-    return Container(
-      margin: EdgeInsets.only(top: isTafseer ? 12 : 8),
-      child: Text(
-        text,
-        style: style,
-        textAlign: alignment,
-        textDirection: alignment == TextAlign.right ? TextDirection.rtl : TextDirection.ltr,
-      ),
-    );
-  }
-
-  List<Widget> _buildAdditionalTranslations(ThemeData theme) {
-    final widgets = <Widget>[];
-    displaySettings.additionalTranslations.forEach((lang, enabled) {
-      if (enabled) {
-        // This would need to fetch the actual translation text for the additional language
-        // For now, we'll show a placeholder
-        widgets.add(
-          _buildTextSection(
-            text: '[Additional $lang translation would go here]',
-            style: TextStyle(
-              fontSize: 14 * fontScale,
-              color: theme.colorScheme.primary.withOpacity(0.8),
-              height: 1.4,
             ),
           ),
         );
-      }
-    });
-    return widgets;
-  }
-
-  List<Widget> _buildAdditionalTafseers(ThemeData theme) {
-    final widgets = <Widget>[];
-    displaySettings.additionalTafseers.forEach((lang, enabled) {
-      if (enabled) {
-        widgets.add(
-          _buildTextSection(
-            text: '[Additional $lang tafseer would go here]',
-            style: TextStyle(
-              fontSize: 13 * fontScale,
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
-              fontStyle: FontStyle.italic,
-              height: 1.4,
-            ),
-            isTafseer: true,
-          ),
-        );
-      }
-    });
-    return widgets;
+      },
+    );
   }
 }

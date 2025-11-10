@@ -74,6 +74,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  change_app_package_name: ^1.5.0
 
 flutter:
   uses-material-design: true
@@ -97,6 +98,9 @@ flutter:
     - assets/data/surah_list_hindi_tafseer.json
     - assets/data/surah_list_arabic_tafseer.json
     - assets/data/surah_list_bengali_tafseer.json
+    - assets/data/quran_arabic.json
+    - assets/data/quran_assamese.json
+    - assets/data/quran_hindi.json
 
   fonts:
     - family: Uthmanic
