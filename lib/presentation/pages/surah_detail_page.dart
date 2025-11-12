@@ -35,41 +35,40 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   @override
   void initState() {
     super.initState();
-    _loadSurahData();
 
     // Initialize search controller listener
     _searchController.addListener(() {
       _filterVerses(_searchController.text);
     });
+
+    // Don't call _loadSurahData() here - we'll call it in didChangeDependencies
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reload data when arguments change
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    if (args != null) {
-      final newLanguage = args['language'] ?? 'english';
-      final newSurahNumber = args['surahNumber'] ?? 1;
-      final newIsTafseer = args['isTafseer'] ?? false;
 
-      if (newLanguage != _language || newSurahNumber != _surahNumber || newIsTafseer != _isTafseer) {
-        _language = newLanguage;
-        _surahNumber = newSurahNumber;
-        _isTafseer = newIsTafseer;
-        _loadSurahData();
-      }
+    // Get route arguments
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final newLanguage = args?['language'] ?? 'english';
+    final newSurahNumber = args?['surahNumber'] ?? 1;
+    final newIsTafseer = args?['isTafseer'] ?? false;
+
+    // Check if we need to reload data
+    if (newLanguage != _language || newSurahNumber != _surahNumber || newIsTafseer != _isTafseer) {
+      _language = newLanguage;
+      _surahNumber = newSurahNumber;
+      _isTafseer = newIsTafseer;
+      _loadSurahData();
+    } else if (_verses.isEmpty) {
+      // Initial load if verses are empty
+      _loadSurahData();
     }
   }
 
-  Future<void> _loadSurahData() async {
-    if (_surahNumber == 0) {
-      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-      _surahNumber = args?['surahNumber'] ?? 1;
-      _language = args?['language'] ?? 'english';
-      _isTafseer = args?['isTafseer'] ?? false;
-    }
+  // In surah_detail_page.dart, modify the _loadSurahData method:
 
+  Future<void> _loadSurahData() async {
     setState(() {
       _isLoading = true;
     });
@@ -85,11 +84,22 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
 
       final String jsonString = await rootBundle.loadString(jsonFile);
 
+      // Also load the Arabic Quran data to ensure we always have Arabic text
+      final String arabicJsonString = await rootBundle.loadString('assets/data/quran_arabic.json');
+      final List<dynamic> arabicJsonData = json.decode(arabicJsonString);
+      final arabicSurahData = arabicJsonData.firstWhere(
+            (surah) => (surah['id'] as num?)?.toInt() == _surahNumber,
+        orElse: () => null,
+      );
+
+      final arabicVerses = arabicSurahData?['verses'] as List? ?? [];
+
       // Handle different JSON structures based on language
       List<dynamic> jsonData;
       Map<String, dynamic>? surahData;
 
       if (_language == 'arabic') {
+        // --- SPECIAL HANDLING FOR ARABIC ---
         // Arabic format: array of surahs with verses array
         jsonData = json.decode(jsonString);
         surahData = jsonData.firstWhere(
@@ -98,17 +108,61 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         );
 
         if (surahData != null) {
+          final versesList = surahData?['verses'] as List?;
+          final rawVerses = versesList?.map((v) => Map<String, dynamic>.from(v)).toList() ?? [];
+
+          // Create a new list of verses with the structure the app expects
+          // For Arabic, we copy the 'text' to 'translation' and 'arabic' fields
+          // This ensures consistency without needing external files
+          final adaptedVerses = rawVerses.map((verse) {
+            final arabicText = verse['text'] ?? '';
+            return {
+              'id': verse['id'],
+              'text': arabicText, // Keep original 'text' field
+              'arabic': arabicText, // Add 'arabic' field
+              'translation': arabicText, // Add 'translation' field with Arabic text
+              'transliteration': '', // Add empty transliteration
+              'footnotes': '', // Add empty footnotes
+              'tafseer': verse['tafseer'] ?? '', // Keep tafseer if it exists
+            };
+          }).toList();
+
           setState(() {
             _surahName = surahData?['name'] ?? 'Surah $_surahNumber';
-            // Fix: Null-safe casting
-            final versesList = surahData?['verses'] as List?;
-            _verses = versesList?.map((v) => Map<String, dynamic>.from(v)).toList() ?? [];
+            _verses = adaptedVerses; // Use the adapted list
             _filteredVerses = List<Map<String, dynamic>>.from(_verses);
             _isLoading = false;
           });
         } else {
           throw Exception('Surah $_surahNumber not found in $jsonFile');
         }
+      } else if (_language == 'english') {
+        // English format: array of verses with sura and aya properties
+        jsonData = json.decode(jsonString);
+
+        // Filter verses for the selected surah
+        final surahVerses = jsonData.where((verse) => (verse['sura'] as num?)?.toInt() == _surahNumber).toList();
+
+        // Merge English verses with Arabic text
+        final mergedVerses = surahVerses.map((verse) {
+          final verseNumber = (verse['aya'] as num?)?.toInt() ?? 0;
+          final arabicVerse = arabicVerses.firstWhere(
+                (v) => (v['id'] as num?)?.toInt() == verseNumber,
+            orElse: () => {},
+          );
+
+          return {
+            ...verse,
+            'arabic': arabicVerse['text'] ?? '',
+          };
+        }).toList();
+
+        setState(() {
+          _surahName = 'Surah $_surahNumber'; // We don't have the name in this format
+          _verses = List<Map<String, dynamic>>.from(mergedVerses);
+          _filteredVerses = List<Map<String, dynamic>>.from(_verses);
+          _isLoading = false;
+        });
       } else if (_language == 'assamese' || _language == 'hindi') {
         // Assamese and Hindi format: array of verses with sura and aya properties
         jsonData = json.decode(jsonString);
@@ -116,9 +170,23 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         // Filter verses for the selected surah
         final surahVerses = jsonData.where((verse) => (verse['sura'] as num?)?.toInt() == _surahNumber).toList();
 
+        // Merge language verses with Arabic text
+        final mergedVerses = surahVerses.map((verse) {
+          final verseNumber = (verse['aya'] as num?)?.toInt() ?? 0;
+          final arabicVerse = arabicVerses.firstWhere(
+                (v) => (v['id'] as num?)?.toInt() == verseNumber,
+            orElse: () => {},
+          );
+
+          return {
+            ...verse,
+            'arabic': arabicVerse['text'] ?? '',
+          };
+        }).toList();
+
         setState(() {
           _surahName = 'Surah $_surahNumber'; // We don't have the name in this format
-          _verses = List<Map<String, dynamic>>.from(surahVerses);
+          _verses = List<Map<String, dynamic>>.from(mergedVerses);
           _filteredVerses = List<Map<String, dynamic>>.from(_verses);
           _isLoading = false;
         });
@@ -135,11 +203,26 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           );
 
           if (surahData != null) {
+            final versesList = surahData?['verses'] as List?;
+            final rawVerses = versesList?.map((v) => Map<String, dynamic>.from(v)).toList() ?? [];
+
+            // Merge language verses with Arabic text
+            final mergedVerses = rawVerses.map((verse) {
+              final verseNumber = (verse['id'] as num?)?.toInt() ?? 0;
+              final arabicVerse = arabicVerses.firstWhere(
+                    (v) => (v['id'] as num?)?.toInt() == verseNumber,
+                orElse: () => {},
+              );
+
+              return {
+                ...verse,
+                'arabic': arabicVerse['text'] ?? '',
+              };
+            }).toList();
+
             setState(() {
               _surahName = surahData?['name'] ?? 'Surah $_surahNumber';
-              // Fix: Null-safe casting
-              final versesList = surahData?['verses'] as List?;
-              _verses = versesList?.map((v) => Map<String, dynamic>.from(v)).toList() ?? [];
+              _verses = mergedVerses;
               _filteredVerses = List<Map<String, dynamic>>.from(_verses);
               _isLoading = false;
             });
@@ -150,9 +233,23 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           // Format similar to Assamese/Hindi (array of verses)
           final surahVerses = jsonData.where((verse) => (verse['sura'] as num?)?.toInt() == _surahNumber).toList();
 
+          // Merge language verses with Arabic text
+          final mergedVerses = surahVerses.map((verse) {
+            final verseNumber = (verse['aya'] as num?)?.toInt() ?? 0;
+            final arabicVerse = arabicVerses.firstWhere(
+                  (v) => (v['id'] as num?)?.toInt() == verseNumber,
+              orElse: () => {},
+            );
+
+            return {
+              ...verse,
+              'arabic': arabicVerse['text'] ?? '',
+            };
+          }).toList();
+
           setState(() {
             _surahName = 'Surah $_surahNumber';
-            _verses = List<Map<String, dynamic>>.from(surahVerses);
+            _verses = List<Map<String, dynamic>>.from(mergedVerses);
             _filteredVerses = List<Map<String, dynamic>>.from(_verses);
             _isLoading = false;
           });
@@ -209,6 +306,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         final translation = verse['translation']?.toString().toLowerCase() ?? '';
         final transliteration = verse['transliteration']?.toString().toLowerCase() ?? '';
         final tafseer = verse['tafseer']?.toString().toLowerCase() ?? '';
+        final footnotes = verse['footnotes']?.toString().toLowerCase() ?? '';
         final searchQuery = query.toLowerCase().trim();
 
         // Search by verse number patterns
@@ -221,6 +319,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
             translation.contains(searchQuery) ||
             transliteration.contains(searchQuery) ||
             tafseer.contains(searchQuery) ||
+            footnotes.contains(searchQuery) ||
             verseNumber.toString().contains(searchQuery);
       }).toList();
 
@@ -583,7 +682,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
                           (verse['verse_number'] as num?)?.toInt() ??
                           (verse['id'] as num?)?.toInt() ?? index + 1;
 
-                      // Handle different text field names
+                      // Handle different text field names - For Arabic, use 'text' field
                       final arabic = verse['text'] ?? verse['arabic'] ?? '';
                       final translation = verse['translation'] ?? '';
                       final transliteration = verse['transliteration'] ?? '';
@@ -608,8 +707,6 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
                         language: _language,
                         isTafseer: _isTafseer,
                         isBookmarked: isBookmarked,
-                        displaySettings: settings.surahDisplaySettings[_language] ??
-                            SurahDisplaySettings.defaultFor(_language),
                         onShare: () => _shareVerse(
                             verseNumber,
                             arabic,

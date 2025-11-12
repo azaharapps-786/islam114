@@ -99,8 +99,6 @@ class BookmarksPage extends StatelessWidget {
                   language: language,
                   isTafseer: isTafseer,
                   isBookmarked: isBookmarked,
-                  displaySettings: settings.surahDisplaySettings[language] ??
-                      SurahDisplaySettings.defaultFor(language),
                   onShare: () => _shareBookmark(
                       context, surahNumber, verseNumber, verseData['arabic'] ?? '', verseData['translation'] ?? ''),
                   onCopy: () => _copyBookmark(

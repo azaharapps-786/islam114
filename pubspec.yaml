@@ -101,6 +101,7 @@ flutter:
     - assets/data/quran_arabic.json
     - assets/data/quran_assamese.json
     - assets/data/quran_hindi.json
+    - assets/data/quran_english.json
 
   fonts:
     - family: Uthmanic

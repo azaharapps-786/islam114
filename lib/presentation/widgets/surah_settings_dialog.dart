@@ -1,8 +1,10 @@
 // lib/presentation/widgets/surah_settings_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert'; // Import for JSON handling
+import 'package:flutter/services.dart'; // Import for rootBundle
 
-import '../../core/services/settings_service.dart'; // Updated import
+import '../../core/services/settings_service.dart';
 
 class SurahSettingsDialog extends StatefulWidget {
   final String language;
@@ -36,6 +38,8 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
   void _updateSettings() {
     final settingsService = Provider.of<SettingsService>(context, listen: false);
     settingsService.updateSurahDisplaySettings(widget.language, _currentSettings);
+    // IMPORTANT: Call notifyListeners to trigger a rebuild in VerseCard
+    settingsService.notifyListeners();
   }
 
   void _toggleOption(String option, bool value) {
@@ -55,9 +59,7 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
           break;
       }
 
-      // Ensure at least one option is enabled
       if (!_currentSettings.hasVisibleContent) {
-        // Re-enable Arabic as fallback
         _currentSettings = _currentSettings.copyWith(showArabic: true);
       }
     });
@@ -108,10 +110,9 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
             ),
             textAlign: TextAlign.center,
           ),
-
           const SizedBox(height: 20),
 
-          // Basic Display Options
+          // --- FIX: Make main toggles visible for ALL languages ---
           _buildOptionSwitch(
             title: 'Arabic Text',
             value: _currentSettings.showArabic,
@@ -120,6 +121,7 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
             fontScale: fontScale,
           ),
 
+          // FIX: This block should now be visible for ALL non-Arabic languages
           if (!isArabicQuran) ...[
             _buildOptionSwitch(
               title: '${_capitalize(widget.language)} Translation',
@@ -144,6 +146,7 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
               fontScale: fontScale,
             ),
           ],
+          // --- End of main toggles block ---
 
           const SizedBox(height: 20),
 
@@ -180,7 +183,6 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
     return ExpansionTile(
       title: Text('Advanced Options', style: TextStyle(fontSize: 16 * fontScale)),
       children: [
-        // Additional Translations
         _buildSectionTitle('Additional Translations', fontScale),
         ..._availableLanguages.where((lang) => lang != widget.language).map((lang) {
           return _buildOptionSwitch(
@@ -190,8 +192,6 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
             fontScale: fontScale,
           );
         }).toList(),
-
-        // Additional Tafseers
         if (widget.isTafseer) ...[
           _buildSectionTitle('Additional Tafseers', fontScale),
           ..._availableTafseers.where((lang) => lang != widget.language).map((lang) {

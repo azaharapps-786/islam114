@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'dart:io' show Platform; // Added for platform check
 
 import '../../core/services/settings_service.dart';
 import '../../core/themes/app_theme.dart';
@@ -197,6 +198,9 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   Widget _buildFontSlider(BuildContext context) {
     return Consumer<SettingsService>(
       builder: (context, settingsService, child) {
+        // Check if the current platform is Windows
+        final bool isWindows = Platform.isWindows;
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Column(
@@ -216,14 +220,35 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                 children: [
                   const Icon(Icons.text_fields, size: 20),
                   Expanded(
-                    child: Slider(
-                      value: settingsService.fontScale,
-                      min: 0.8,
-                      max: 1.4,
-                      divisions: 6,
-                      onChanged: (double value) {
-                        settingsService.updateFontScale(value);
-                      },
+                    child: SliderTheme(
+                      // Customize the slider theme for better desktop interaction
+                      data: SliderTheme.of(context).copyWith(
+                        // Make the thumb larger on Windows for easier mouse interaction
+                        thumbShape: RoundSliderThumbShape(
+                          enabledThumbRadius: isWindows ? 12.0 : 8.0,
+                        ),
+                        // Make the track thicker for better visibility
+                        trackHeight: isWindows ? 8.0 : 6.0,
+                        // Add a larger visible overlay on hover for better feedback
+                        overlayShape: RoundSliderOverlayShape(
+                          overlayRadius: isWindows ? 24.0 : 16.0,
+                        ),
+                      ),
+                      child: Slider(
+                        value: settingsService.fontScale,
+                        min: 0.8,
+                        max: 1.4,
+                        divisions: 6,
+                        // Set the mouse cursor to a pointer on hover
+                        mouseCursor: SystemMouseCursors.click,
+                        onChanged: (double value) {
+                          settingsService.updateFontScale(value);
+                        },
+                        // Ensure the final value is set when interaction ends
+                        onChangeEnd: (double value) {
+                          settingsService.updateFontScale(value);
+                        },
+                      ),
                     ),
                   ),
                   const Icon(Icons.text_fields, size: 28),

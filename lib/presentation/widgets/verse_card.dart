@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
 
 import '../../core/services/settings_service.dart';
 
@@ -16,11 +17,10 @@ class VerseCard extends StatefulWidget {
   final String language;
   final bool isTafseer;
   final bool isBookmarked;
-  final SurahDisplaySettings displaySettings;
+  final double fontScale;
   final VoidCallback onShare;
   final VoidCallback onCopy;
   final VoidCallback onBookmark;
-  final double fontScale;
 
   const VerseCard({
     super.key,
@@ -34,23 +34,24 @@ class VerseCard extends StatefulWidget {
     required this.language,
     required this.isTafseer,
     required this.isBookmarked,
-    required this.displaySettings,
+    required this.fontScale,
     required this.onShare,
     required this.onCopy,
     required this.onBookmark,
-    required this.fontScale,
   });
 
   @override
   State<VerseCard> createState() => _VerseCardState();
 }
 
-class _VerseCardState extends State<VerseCard>
-    with SingleTickerProviderStateMixin {
+class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   bool _isExpanded = false;
   bool _showFootnotes = false;
+
+  // This map will hold the fetched additional translations, e.g., {'assamese': '...'}
+  Map<String, String> _additionalTranslations = {};
 
   @override
   void initState() {
@@ -69,9 +70,59 @@ class _VerseCardState extends State<VerseCard>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // This is called when the widget is first built and when notifyListeners() is called
+    _loadAdditionalTranslations();
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  // Fetches additional translations based on current settings
+  Future<void> _loadAdditionalTranslations() async {
+    final settingsService = Provider.of<SettingsService>(context, listen: false);
+    // Get the display settings for the CURRENT language of the verse, not just Arabic
+    final displaySettings = settingsService.surahDisplaySettings[widget.language];
+
+    if (displaySettings == null) return;
+
+    final newTranslations = <String, String>{};
+    // Get the map of enabled additional translations (e.g., {'assamese': true, 'hindi': false})
+    final enabledLanguages = displaySettings!.additionalTranslations;
+
+    for (final entry in enabledLanguages.entries) {
+      if (entry.value) {
+        final lang = entry.key;
+        try {
+          // Load the JSON for the additional language (e.g., quran_assamese.json)
+          final String jsonString = await rootBundle.loadString('assets/data/quran_$lang.json');
+          final List<dynamic> jsonData = json.decode(jsonString);
+
+          // Find the specific verse in that language's data
+          final verseData = jsonData.firstWhere(
+                (v) => (v['sura'] as num?)?.toInt() == widget.surahNumber && (v['aya'] as num?)?.toInt() == widget.verseNumber,
+            orElse: () => null,
+          );
+
+          if (verseData != null) {
+            // Store the translation text
+            newTranslations[lang] = verseData['translation'] ?? '';
+          }
+        } catch (e) {
+          debugPrint('Error loading translation for $lang: $e');
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _additionalTranslations = newTranslations;
+      });
+    }
   }
 
   void _onTapDown(TapDownDetails details) {
@@ -89,7 +140,10 @@ class _VerseCardState extends State<VerseCard>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // We listen to the service here to get the display settings
     final settings = Provider.of<SettingsService>(context);
+    // Get the display settings for the CURRENT language of the verse
+    final displaySettings = settings.surahDisplaySettings[widget.language] ?? SurahDisplaySettings.defaultFor(widget.language);
 
     return AnimatedBuilder(
       animation: _scaleAnimation,
@@ -126,24 +180,16 @@ class _VerseCardState extends State<VerseCard>
                         ),
                       ),
                       const Spacer(),
-                      // Bookmark button - CHANGED TO STAR ICON
                       IconButton(
                         icon: Icon(
-                          // Use star icon instead of bookmark
                           widget.isBookmarked ? Icons.star : Icons.star_border,
-                          color: widget.isBookmarked
-                              ? Colors.amber // Use amber color for filled star
-                              : theme.colorScheme.onSurface.withOpacity(0.6),
+                          color: widget.isBookmarked ? Colors.amber : theme.colorScheme.onSurface.withOpacity(0.6),
                         ),
                         onPressed: widget.onBookmark,
                         tooltip: widget.isBookmarked ? 'Remove bookmark' : 'Add bookmark',
                       ),
-                      // More options button
                       PopupMenuButton<String>(
-                        icon: Icon(
-                          Icons.more_vert,
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
-                        ),
+                        icon: Icon(Icons.more_vert, color: theme.colorScheme.onSurface.withOpacity(0.6)),
                         onSelected: (value) {
                           switch (value) {
                             case 'share':
@@ -155,49 +201,32 @@ class _VerseCardState extends State<VerseCard>
                           }
                         },
                         itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'share',
-                            child: Row(
-                              children: [
-                                Icon(Icons.share, size: 20),
-                                const SizedBox(width: 8),
-                                Text('Share'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'copy',
-                            child: Row(
-                              children: [
-                                Icon(Icons.copy, size: 20),
-                                const SizedBox(width: 8),
-                                Text('Copy'),
-                              ],
-                            ),
-                          ),
+                          PopupMenuItem(value: 'share', child: Row(children: [Icon(Icons.share, size: 20), SizedBox(width: 8), Text('Share')])),
+                          PopupMenuItem(value: 'copy', child: Row(children: [Icon(Icons.copy, size: 20), SizedBox(width: 8), Text('Copy')])),
                         ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
 
-                  // Arabic text
-                  if (widget.displaySettings.showArabic && widget.arabic.isNotEmpty) ...[
+                  // Arabic text (if enabled)
+                  if (displaySettings.showArabic && widget.arabic.isNotEmpty) ...[
                     Text(
                       widget.arabic,
                       style: TextStyle(
                         fontSize: 20 * widget.fontScale,
-                        fontFamily: 'Uthmanic',
+                        fontFamily: 'Uthmanic', // Use your Arabic font
                         height: 1.5,
                         color: theme.colorScheme.onSurface,
                       ),
                       textAlign: TextAlign.right,
+                      textDirection: TextDirection.rtl,
                     ),
                     const SizedBox(height: 12),
                   ],
 
-                  // Transliteration
-                  if (widget.displaySettings.showTransliteration && widget.transliteration.isNotEmpty) ...[
+                  // Primary Transliteration (if enabled)
+                  if (displaySettings.showTransliteration && widget.transliteration.isNotEmpty) ...[
                     Text(
                       widget.transliteration,
                       style: TextStyle(
@@ -210,8 +239,8 @@ class _VerseCardState extends State<VerseCard>
                     const SizedBox(height: 8),
                   ],
 
-                  // Translation
-                  if (widget.displaySettings.showTranslation && widget.translation.isNotEmpty) ...[
+                  // Primary Translation (if enabled)
+                  if (displaySettings.showTranslation && widget.translation.isNotEmpty) ...[
                     Text(
                       widget.translation,
                       style: TextStyle(
@@ -223,14 +252,40 @@ class _VerseCardState extends State<VerseCard>
                     const SizedBox(height: 12),
                   ],
 
+                  // --- NEW: Display Additional Translations ---
+                  // This loop will create a Text widget for each enabled additional translation
+                  ..._additionalTranslations.entries.map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_capitalize(entry.key)} Translation',
+                            style: TextStyle(
+                              fontSize: 12 * widget.fontScale,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            entry.value,
+                            style: TextStyle(
+                              fontSize: 15 * widget.fontScale,
+                              color: theme.colorScheme.onSurface.withOpacity(0.85),
+                            ),
+                            textAlign: TextAlign.left,
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+
                   // Footnotes (if available)
                   if (widget.footnotes.isNotEmpty) ...[
                     GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _showFootnotes = !_showFootnotes;
-                        });
-                      },
+                      onTap: () => setState(() => _showFootnotes = !_showFootnotes),
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         margin: const EdgeInsets.only(bottom: 8),
@@ -240,25 +295,11 @@ class _VerseCardState extends State<VerseCard>
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 16,
-                              color: theme.colorScheme.secondary,
-                            ),
+                            Icon(Icons.info_outline, size: 16, color: theme.colorScheme.secondary),
                             const SizedBox(width: 8),
-                            Text(
-                              'Footnotes',
-                              style: TextStyle(
-                                fontSize: 12 * widget.fontScale,
-                                color: theme.colorScheme.secondary,
-                              ),
-                            ),
+                            Text('Footnotes', style: TextStyle(fontSize: 12 * widget.fontScale, color: theme.colorScheme.secondary)),
                             const Spacer(),
-                            Icon(
-                              _showFootnotes ? Icons.expand_less : Icons.expand_more,
-                              size: 16,
-                              color: theme.colorScheme.secondary,
-                            ),
+                            Icon(_showFootnotes ? Icons.expand_less : Icons.expand_more, size: 16, color: theme.colorScheme.secondary),
                           ],
                         ),
                       ),
@@ -269,66 +310,39 @@ class _VerseCardState extends State<VerseCard>
                         decoration: BoxDecoration(
                           color: theme.colorScheme.secondary.withOpacity(0.05),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: theme.colorScheme.secondary.withOpacity(0.2),
-                          ),
+                          border: Border.all(color: theme.colorScheme.secondary.withOpacity(0.2)),
                         ),
                         child: Text(
                           widget.footnotes,
-                          style: TextStyle(
-                            fontSize: 12 * widget.fontScale,
-                            color: theme.colorScheme.onSurface.withOpacity(0.8),
-                          ),
+                          style: TextStyle(fontSize: 12 * widget.fontScale, color: theme.colorScheme.onSurface.withOpacity(0.8)),
                         ),
                       ),
                   ],
 
                   // Tafseer (if available and enabled)
-                  if (widget.isTafseer && widget.displaySettings.showTafseer && widget.tafseer.isNotEmpty) ...[
+                  if (widget.isTafseer && displaySettings.showTafseer && widget.tafseer.isNotEmpty) ...[
                     GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _isExpanded = !_isExpanded;
-                        });
-                      },
+                      onTap: () => setState(() => _isExpanded = !_isExpanded),
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primary.withOpacity(0.05),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: theme.colorScheme.primary.withOpacity(0.2),
-                          ),
+                          border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                Text(
-                                  'Tafseer',
-                                  style: TextStyle(
-                                    fontSize: 14 * widget.fontScale,
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
+                                Text('Tafseer', style: TextStyle(fontSize: 14 * widget.fontScale, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                                 const Spacer(),
-                                Icon(
-                                  _isExpanded ? Icons.expand_less : Icons.expand_more,
-                                  color: theme.colorScheme.primary,
-                                ),
+                                Icon(_isExpanded ? Icons.expand_less : Icons.expand_more, color: theme.colorScheme.primary),
                               ],
                             ),
                             if (_isExpanded) ...[
                               const SizedBox(height: 8),
-                              Text(
-                                widget.tafseer,
-                                style: TextStyle(
-                                  fontSize: 14 * widget.fontScale,
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                              ),
+                              Text(widget.tafseer, style: TextStyle(fontSize: 14 * widget.fontScale, color: theme.colorScheme.onSurface)),
                             ],
                           ],
                         ),
@@ -342,5 +356,10 @@ class _VerseCardState extends State<VerseCard>
         );
       },
     );
+  }
+
+  String _capitalize(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1);
   }
 }

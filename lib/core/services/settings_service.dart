@@ -1,6 +1,7 @@
+// lib/core/services/settings_service.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert'; // Add this import for JSON handling
+import 'dart:convert';
 
 import '../constants/app_constants.dart';
 import '../enums/calculation_method.dart';
@@ -112,9 +113,8 @@ class SettingsService with ChangeNotifier {
           final Map<String, dynamic> settingsMap = json.decode(settingsJson);
           _surahDisplaySettings[language] = SurahDisplaySettings.fromJson(settingsMap);
         } catch (e) {
-          // If loading fails, keep the default settings
+          // If loading fails, keep the default settings that were just initialized
           print('Error loading display settings for $language: $e');
-          _surahDisplaySettings[language] = SurahDisplaySettings.defaultFor(language);
         }
       }
     }
@@ -134,7 +134,7 @@ class SettingsService with ChangeNotifier {
     }
   }
 
-  // Save all settings
+  // Centralized saving logic
   Future<void> _saveSettings() async {
     // Save display settings
     for (final entry in _surahDisplaySettings.entries) {
@@ -219,13 +219,28 @@ class SurahDisplaySettings {
 
   factory SurahDisplaySettings.defaultFor(String language) {
     final isArabic = language == 'arabic';
+    final isEnglish = language == 'english';
+
+    // Create a map of default advanced translations/tafseers
+    final Map<String, bool> defaultAdvancedTranslations = {};
+    final Map<String, bool> defaultAdvancedTafseers = {};
+
+    // Set defaults ONLY for English language
+    if (isEnglish) {
+      // For English, enable Assamese and Hindi by default
+      defaultAdvancedTranslations['assamese'] = true;
+      defaultAdvancedTranslations['hindi'] = true;
+      // All other languages will remain false by default
+    }
+
     return SurahDisplaySettings(
-      showArabic: true,
-      showTranslation: !isArabic, // No translation for Arabic Quran by default
-      showTransliteration: !isArabic,
+      showArabic: true, // Always show Arabic by default
+      showTranslation: !isArabic, // No primary translation for Arabic Quran
+      showTransliteration: !isArabic, // No primary transliteration for Arabic Quran
       showTafseer: false,
-      additionalTranslations: {},
-      additionalTafseers: {},
+      // Use the new maps for the advanced options
+      additionalTranslations: defaultAdvancedTranslations,
+      additionalTafseers: defaultAdvancedTafseers,
     );
   }
 
