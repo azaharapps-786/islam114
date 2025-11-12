@@ -66,8 +66,6 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
     }
   }
 
-  // In surah_detail_page.dart, modify the _loadSurahData method:
-
   Future<void> _loadSurahData() async {
     setState(() {
       _isLoading = true;
@@ -83,16 +81,6 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
       }
 
       final String jsonString = await rootBundle.loadString(jsonFile);
-
-      // Also load the Arabic Quran data to ensure we always have Arabic text
-      final String arabicJsonString = await rootBundle.loadString('assets/data/quran_arabic.json');
-      final List<dynamic> arabicJsonData = json.decode(arabicJsonString);
-      final arabicSurahData = arabicJsonData.firstWhere(
-            (surah) => (surah['id'] as num?)?.toInt() == _surahNumber,
-        orElse: () => null,
-      );
-
-      final arabicVerses = arabicSurahData?['verses'] as List? ?? [];
 
       // Handle different JSON structures based on language
       List<dynamic> jsonData;
@@ -143,23 +131,9 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         // Filter verses for the selected surah
         final surahVerses = jsonData.where((verse) => (verse['sura'] as num?)?.toInt() == _surahNumber).toList();
 
-        // Merge English verses with Arabic text
-        final mergedVerses = surahVerses.map((verse) {
-          final verseNumber = (verse['aya'] as num?)?.toInt() ?? 0;
-          final arabicVerse = arabicVerses.firstWhere(
-                (v) => (v['id'] as num?)?.toInt() == verseNumber,
-            orElse: () => {},
-          );
-
-          return {
-            ...verse,
-            'arabic': arabicVerse['text'] ?? '',
-          };
-        }).toList();
-
         setState(() {
           _surahName = 'Surah $_surahNumber'; // We don't have the name in this format
-          _verses = List<Map<String, dynamic>>.from(mergedVerses);
+          _verses = List<Map<String, dynamic>>.from(surahVerses);
           _filteredVerses = List<Map<String, dynamic>>.from(_verses);
           _isLoading = false;
         });
@@ -170,23 +144,9 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         // Filter verses for the selected surah
         final surahVerses = jsonData.where((verse) => (verse['sura'] as num?)?.toInt() == _surahNumber).toList();
 
-        // Merge language verses with Arabic text
-        final mergedVerses = surahVerses.map((verse) {
-          final verseNumber = (verse['aya'] as num?)?.toInt() ?? 0;
-          final arabicVerse = arabicVerses.firstWhere(
-                (v) => (v['id'] as num?)?.toInt() == verseNumber,
-            orElse: () => {},
-          );
-
-          return {
-            ...verse,
-            'arabic': arabicVerse['text'] ?? '',
-          };
-        }).toList();
-
         setState(() {
           _surahName = 'Surah $_surahNumber'; // We don't have the name in this format
-          _verses = List<Map<String, dynamic>>.from(mergedVerses);
+          _verses = List<Map<String, dynamic>>.from(surahVerses);
           _filteredVerses = List<Map<String, dynamic>>.from(_verses);
           _isLoading = false;
         });
@@ -203,26 +163,11 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           );
 
           if (surahData != null) {
-            final versesList = surahData?['verses'] as List?;
-            final rawVerses = versesList?.map((v) => Map<String, dynamic>.from(v)).toList() ?? [];
-
-            // Merge language verses with Arabic text
-            final mergedVerses = rawVerses.map((verse) {
-              final verseNumber = (verse['id'] as num?)?.toInt() ?? 0;
-              final arabicVerse = arabicVerses.firstWhere(
-                    (v) => (v['id'] as num?)?.toInt() == verseNumber,
-                orElse: () => {},
-              );
-
-              return {
-                ...verse,
-                'arabic': arabicVerse['text'] ?? '',
-              };
-            }).toList();
-
             setState(() {
               _surahName = surahData?['name'] ?? 'Surah $_surahNumber';
-              _verses = mergedVerses;
+              // Fix: Null-safe casting
+              final versesList = surahData?['verses'] as List?;
+              _verses = versesList?.map((v) => Map<String, dynamic>.from(v)).toList() ?? [];
               _filteredVerses = List<Map<String, dynamic>>.from(_verses);
               _isLoading = false;
             });
@@ -233,23 +178,9 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           // Format similar to Assamese/Hindi (array of verses)
           final surahVerses = jsonData.where((verse) => (verse['sura'] as num?)?.toInt() == _surahNumber).toList();
 
-          // Merge language verses with Arabic text
-          final mergedVerses = surahVerses.map((verse) {
-            final verseNumber = (verse['aya'] as num?)?.toInt() ?? 0;
-            final arabicVerse = arabicVerses.firstWhere(
-                  (v) => (v['id'] as num?)?.toInt() == verseNumber,
-              orElse: () => {},
-            );
-
-            return {
-              ...verse,
-              'arabic': arabicVerse['text'] ?? '',
-            };
-          }).toList();
-
           setState(() {
             _surahName = 'Surah $_surahNumber';
-            _verses = List<Map<String, dynamic>>.from(mergedVerses);
+            _verses = List<Map<String, dynamic>>.from(surahVerses);
             _filteredVerses = List<Map<String, dynamic>>.from(_verses);
             _isLoading = false;
           });
