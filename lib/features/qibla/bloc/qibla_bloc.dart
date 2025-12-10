@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:math' as math;
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
@@ -11,29 +12,35 @@ import 'qibla_event.dart';
 import 'qibla_state.dart';
 
 class QiblaBloc extends Bloc<QiblaEvent, QiblaState> {
-  // --- Constants ---
+  // Constants
   static const double _kaabaLatitude = 21.422487;
   static const double _kaabaLongitude = 39.826206;
+  static const double _gravity = 9.81;
 
-  // --- Sensor Fusion Variables (Kalman-inspired Filter) ---
+  // Kalman Filter Parameters
   double _filteredAzimuth = 0.0;
-  double _processNoise = 0.3;
-  double _measurementNoise = 10.0;
-  double _kalmanGain = 0.0;
+  static const double _processNoise = 0.05; // Tuned for smoothness
+  static const double _measurementNoise = 3.0;
   double _errorCovariance = 1.0;
 
-  // --- Sensor Data ---
-  double _currentAzimuth = 0.0;
+  // Sensor Fusion
+  BehaviorSubject<AccelerometerEvent>? _accelSubject;
+  BehaviorSubject<MagnetometerEvent>? _magSubject;
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   StreamSubscription<MagnetometerEvent>? _magnetometerSubscription;
+  StreamSubscription<double>? _internalHeadingSubscription;
+  StreamSubscription<double>? _headingSubscription;
 
-  // --- Location Variables ---
+  // State
   Position? _currentPosition;
   double _qiblaBearing = 0.0;
+  final Queue<double> _recentHeadings = Queue();
+  static const int _windowSize = 20;
+  static const double _stdThreshold = 2.5; // Degrees for 'High' accuracy
 
-  // --- Stream Controller & Subscription ---
+  // Streams
   final _azimuthStreamController = StreamController<double>.broadcast();
-  late StreamSubscription<double> _azimuthSubscription;
+  StreamSubscription<Position>? _positionSubscription;
 
   QiblaBloc() : super(const QiblaInitial()) {
     on<QiblaDirectionRequested>(_onQiblaDirectionRequested);
@@ -44,152 +51,254 @@ class QiblaBloc extends Bloc<QiblaEvent, QiblaState> {
       Emitter<QiblaState> emit,
       ) async {
     emit(const QiblaLoading());
+
     try {
-      // 1. Check for required sensors
-      if (accelerometerEvents == null || magnetometerEvents == null) {
-        emit(const QiblaSensorError('Your device does not have the required sensors.'));
+      // Check sensors
+      final accelStream = accelerometerEvents;
+      final magStream = magnetometerEvents;
+      if (accelStream == null || magStream == null) {
+        emit(const QiblaSensorError('Device lacks required sensors (accelerometer or magnetometer).'));
         return;
       }
 
-      // 2. Handle Permissions
-      final permissionStatus = await _handlePermissions();
-      if (!permissionStatus) {
-        emit(const QiblaLocationPermissionDenied(
-          'Location permission is required.',
-        ));
+      // Handle permissions
+      final hasPermission = await _requestLocationPermission();
+      if (!hasPermission) {
+        emit(const QiblaLocationPermissionDenied('Location permission required for Qibla direction.'));
         return;
       }
 
-      // 3. Get Location
-      _currentPosition = await _getCurrentLocation();
-      if (_currentPosition == null) {
-        emit(const QiblaLocationServiceDisabled(
-          'Please enable location services.',
-        ));
+      // Get initial location
+      final position = await _getCurrentPosition();
+      if (position == null) {
+        emit(const QiblaLocationServiceDisabled('Enable location services to proceed.'));
         return;
       }
-
-      // 4. Calculate Qibla Bearing (static calculation)
+      _currentPosition = position;
       _qiblaBearing = _calculateBearing(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
+        position.latitude,
+        position.longitude,
         _kaabaLatitude,
         _kaabaLongitude,
       );
 
-      // 5. Start Sensor Fusion
-      _startSensorFusion();
+      // Start live position updates for dynamic bearing
+      _startPositionStream();
 
-      // 6. Listen to debounced azimuth stream and emit success state
-      _azimuthSubscription = _azimuthStreamController.stream
-          .debounceTime(const Duration(milliseconds: 100))
-          .listen((azimuth) {
-        _currentAzimuth = azimuth;
-        if (isClosed) return;
-        emit(QiblaLoadSuccess(
-          qiblaDirection: _calculateRelativeQiblaDirection(),
-          distanceToKaaba: Geolocator.distanceBetween(
-            _currentPosition!.latitude,
-            _currentPosition!.longitude,
-            _kaabaLatitude,
-            _kaabaLongitude,
-          ),
-          accuracyStatus: _getAccuracyStatus(),
-        ));
-      });
+      // Initialize sensor fusion for live heading
+      await _initializeSensorFusion(accelStream, magStream);
+
+      // Listen to filtered azimuth and emit updates
+      _headingSubscription = _azimuthStreamController.stream
+          .debounceTime(const Duration(milliseconds: 50)) // Responsive ~20 FPS
+          .listen(
+            (azimuth) {
+          if (isClosed) return;
+          final relative = _calculateRelative(azimuth);
+          _updateRecentHeadings(azimuth);
+          emit(QiblaLoadSuccess(
+            relativeQiblaDirection: relative,
+            currentHeading: azimuth,
+            distanceToKaaba: Geolocator.distanceBetween(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+              _kaabaLatitude,
+              _kaabaLongitude,
+            ),
+            accuracyStatus: _getAccuracyStatus(),
+          ));
+        },
+        onError: (error) => emit(QiblaSensorError('Sensor error: $error')),
+      );
     } catch (e) {
-      emit(QiblaSensorError('An unexpected error occurred: ${e.toString()}'));
+      emit(QiblaSensorError('Failed to initialize Qibla: ${e.toString()}'));
     }
   }
 
-  Future<bool> _handlePermissions() async {
+  Future<bool> _requestLocationPermission() async {
     var status = await Permission.location.status;
-    if (status.isDenied) {
+    if (!status.isGranted) {
       status = await Permission.location.request();
     }
     return status.isGranted;
   }
 
-  Future<Position?> _getCurrentLocation() async {
-    final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return null;
-    return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
+  Future<Position?> _getCurrentPosition() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return null;
+    }
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 8),
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  void _startPositionStream() {
+    _positionSubscription?.cancel();
+    _positionSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 5, // Update if moved >5m
+      ),
+    ).listen(
+          (position) {
+        _currentPosition = position;
+        _qiblaBearing = _calculateBearing(
+          position.latitude,
+          position.longitude,
+          _kaabaLatitude,
+          _kaabaLongitude,
+        );
+      },
+      onError: (e) {
+        // Silent fail, fallback to last known
+      },
     );
   }
 
-  void _startSensorFusion() {
-    // --- Accelerometer ---
-    _accelerometerSubscription = accelerometerEvents?.listen(
-          (event) {},
-      onError: (error) => addError(error),
+  Future<void> _initializeSensorFusion(
+      Stream<AccelerometerEvent> accelStream,
+      Stream<MagnetometerEvent> magStream,
+      ) async {
+    await _disposeSensors();
+
+    _accelSubject = BehaviorSubject<AccelerometerEvent>();
+    _magSubject = BehaviorSubject<MagnetometerEvent>();
+
+    _accelerometerSubscription = accelStream.listen(
+      _accelSubject!.add,
+      onError: addError,
     );
 
-    // --- Magnetometer ---
-    _magnetometerSubscription = magnetometerEvents?.listen(
-          (MagnetometerEvent event) {
-        // Get the raw azimuth from the magnetometer
-        final azimuth = math.atan2(event.y, event.x);
-        final degrees = (azimuth * 180 / math.pi + 360) % 360;
+    _magnetometerSubscription = magStream.listen(
+      _magSubject!.add,
+      onError: addError,
+    );
 
-        // Apply the Kalman filter to smooth the data
-        _updateKalmanFilter(degrees);
+    // Combine for tilt-compensated heading
+    final headingStream = Rx.combineLatest2(
+      _accelSubject!,
+      _magSubject!,
+      _computeTiltCompensatedHeading,
+    );
+
+    _internalHeadingSubscription = headingStream
+        .where((heading) => !heading.isNaN && heading.isFinite && heading >= 0 && heading <= 360)
+        .listen(
+          (rawHeading) {
+        _updateKalmanFilter(rawHeading);
         _azimuthStreamController.add(_filteredAzimuth);
       },
-      onError: (error) => addError(error),
+      onError: addError,
     );
   }
 
-  /// A simple Kalman-inspired filter for smoothing the azimuth.
+  static double _computeTiltCompensatedHeading(
+      AccelerometerEvent accel,
+      MagnetometerEvent mag,
+      ) {
+    // Normalize accel to unit gravity vector
+    final ax = accel.x / _gravity;
+    final ay = accel.y / _gravity;
+    final az = accel.z / _gravity;
+    final norm = math.sqrt(ax * ax + ay * ay + az * az);
+    if (norm == 0) return 0.0;
+
+    final nx = ax / norm;
+    final ny = ay / norm;
+    final nz = az / norm;
+
+    // Pitch and roll
+    final pitch = math.asin(-nx);
+    final roll = math.atan2(ny, nz);
+
+    // Rotate mag into horizontal plane
+    final hx = mag.x * math.cos(pitch) + mag.z * math.sin(pitch);
+    final hy = mag.x * math.sin(roll) * math.sin(pitch) +
+        mag.y * math.cos(roll) -
+        mag.z * math.cos(pitch) * math.sin(roll);
+
+    // Heading
+    var heading = math.atan2(hy, hx);
+    heading = (heading * 180 / math.pi + 360) % 360;
+    return heading;
+  }
+
   void _updateKalmanFilter(double measurement) {
-    // Prediction
     _errorCovariance += _processNoise;
-
-    // Update
-    _kalmanGain = _errorCovariance / (_errorCovariance + _measurementNoise);
-    _filteredAzimuth += _kalmanGain * (measurement - _filteredAzimuth);
-    _errorCovariance *= (1 - _kalmanGain);
-
-    // Normalize to 0-360
+    final kalmanGain = _errorCovariance / (_errorCovariance + _measurementNoise);
+    _filteredAzimuth += kalmanGain * (measurement - _filteredAzimuth);
+    _errorCovariance *= (1 - kalmanGain);
     _filteredAzimuth = (_filteredAzimuth + 360) % 360;
   }
 
-  double _calculateRelativeQiblaDirection() {
-    double relativeDirection = _qiblaBearing - _currentAzimuth;
-    relativeDirection = (relativeDirection + 360) % 360;
-    return relativeDirection;
+  void _updateRecentHeadings(double heading) {
+    _recentHeadings.addLast(heading);
+    if (_recentHeadings.length > _windowSize) {
+      _recentHeadings.removeFirst();
+    }
+  }
+
+  double _calculateRelative(double heading) {
+    var relative = _qiblaBearing - heading;
+    return (relative + 360) % 360;
   }
 
   String _getAccuracyStatus() {
-    // Since we can't get direct accuracy, we infer it from sensor stability.
-    // If the change is small, we assume high accuracy.
-    if ((_currentAzimuth - _filteredAzimuth).abs() > 5) {
-      return 'Calibrating...';
-    }
-    return 'High';
+    if (_recentHeadings.length < 10) return 'Calibrating...';
+    final std = _stdDev(_recentHeadings);
+    return std < _stdThreshold ? 'High' : 'Calibrating...';
   }
 
-  double _calculateBearing(double startLat, double startLon, double endLat, double endLon) {
-    final double lat1 = startLat * math.pi / 180;
-    final double lon1 = startLon * math.pi / 180;
-    final double lat2 = endLat * math.pi / 180;
-    final double lon2 = endLon * math.pi / 180;
-    final double dLon = lon2 - lon1;
+  static double _stdDev(Iterable<double> values) {
+    if (values.length < 2) return double.infinity;
+    final mean = values.fold(0.0, (a, b) => a + b) / values.length;
+    final variance = values
+        .map((v) => (v - mean) * (v - mean))
+        .fold(0.0, (a, b) => a + b) /
+        (values.length - 1);
+    return math.sqrt(variance);
+  }
 
-    final double y = math.sin(dLon) * math.cos(lat2);
-    final double x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
-
-    double bearing = math.atan2(y, x);
+  double _calculateBearing(double lat1, double lon1, double lat2, double lon2) {
+    final dLon = _toRadians(lon2 - lon1);
+    final y = math.sin(dLon) * math.cos(_toRadians(lat2));
+    final x = math.cos(_toRadians(lat1)) * math.sin(_toRadians(lat2)) -
+        math.sin(_toRadians(lat1)) * math.cos(_toRadians(lat2)) * math.cos(dLon);
+    var bearing = math.atan2(y, x);
     bearing = (bearing * 180 / math.pi + 360) % 360;
     return bearing;
   }
 
+  static double _toRadians(double degrees) => degrees * math.pi / 180;
+
+  Future<void> _disposeSensors() async {
+    await _accelerometerSubscription?.cancel();
+    await _magnetometerSubscription?.cancel();
+    await _internalHeadingSubscription?.cancel();
+    await _headingSubscription?.cancel();
+    await _positionSubscription?.cancel();
+    await _accelSubject?.close();
+    await _magSubject?.close();
+    _accelerometerSubscription = null;
+    _magnetometerSubscription = null;
+    _internalHeadingSubscription = null;
+    _headingSubscription = null;
+    _positionSubscription = null;
+    _accelSubject = null;
+    _magSubject = null;
+    _recentHeadings.clear();
+  }
+
   @override
-  Future<void> close() {
-    _accelerometerSubscription?.cancel();
-    _magnetometerSubscription?.cancel();
-    _azimuthSubscription.cancel();
-    _azimuthStreamController.close();
+  Future<void> close() async {
+    await _disposeSensors();
+    await _azimuthStreamController.close();
     return super.close();
   }
 }

@@ -4,7 +4,7 @@ abstract class QiblaState extends Equatable {
   const QiblaState();
 
   @override
-  List<Object> get props => [];
+  List<Object?> get props => [];
 }
 
 class QiblaInitial extends QiblaState {
@@ -21,7 +21,7 @@ class QiblaLocationPermissionDenied extends QiblaState {
   const QiblaLocationPermissionDenied(this.message);
 
   @override
-  List<Object> get props => [message];
+  List<Object?> get props => [message];
 }
 
 class QiblaLocationServiceDisabled extends QiblaState {
@@ -30,7 +30,7 @@ class QiblaLocationServiceDisabled extends QiblaState {
   const QiblaLocationServiceDisabled(this.message);
 
   @override
-  List<Object> get props => [message];
+  List<Object?> get props => [message];
 }
 
 class QiblaSensorError extends QiblaState {
@@ -39,20 +39,22 @@ class QiblaSensorError extends QiblaState {
   const QiblaSensorError(this.message);
 
   @override
-  List<Object> get props => [message];
+  List<Object?> get props => [message];
 }
 
 class QiblaLoadSuccess extends QiblaState {
-  final double qiblaDirection;
+  final double relativeQiblaDirection;
+  final double currentHeading;
   final double distanceToKaaba;
   final String accuracyStatus;
 
   const QiblaLoadSuccess({
-    required this.qiblaDirection,
+    required this.relativeQiblaDirection,
+    required this.currentHeading,
     required this.distanceToKaaba,
     required this.accuracyStatus,
   });
 
   @override
-  List<Object> get props => [qiblaDirection, distanceToKaaba, accuracyStatus];
+  List<Object?> get props => [relativeQiblaDirection, currentHeading, distanceToKaaba, accuracyStatus];
 }
