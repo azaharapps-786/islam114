@@ -333,10 +333,22 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
     final double titleMaxWidth = 200.0 * widget.fontScale;
     const double spaceBetween = 8.0; // A small assumed space if not using spaceBetween
 
-    // Using theme colors (as defined in the previous solution)
+    // --- START OF COLOR FIX ---
+    // Define the color gradient for the expanded island, matching DynamicHorizontalHeader
+    final Gradient dynamicGradient = LinearGradient(
+      colors: [
+        theme.colorScheme.tertiary.withOpacity(0.9),
+        theme.colorScheme.primary,
+      ],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+
+    // We keep these defined but they are no longer used for the background color
     final Color islandCollapsedColor = theme.colorScheme.primary.withOpacity(
         0.8);
     const Color islandExpandedColor = Colors.black;
+    // --- END OF COLOR FIX ---
 
     // Define the required width for the collapsed state
     const double collapsedIslandWidth = 120.0;
@@ -348,28 +360,16 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
         animation: _animation,
         builder: (context, child) {
           // 1. Calculate the current width of the shrinking title element
-          // The title shrinks from titleMaxWidth down to 0.0 using ReverseAnimation.
           final double titleShrinkFactor = ReverseAnimation(_animation).value;
           final double currentTitleWidth = titleMaxWidth * titleShrinkFactor;
 
           // 2. Calculate the total available width for the island
-          // Total space in the Row (ScreenWidth - 2*Padding)
-          // minus the current space taken by the Title and the fixed gap.
           final double maxRowWidth = screenWidth - (paddingHorizontal * 2);
 
-          // The space consumed by the title and the small gap in the expanded state is 0.
-          // In the collapsed state, the island only occupies collapsedIslandWidth.
-
-          // We must define the maximum target width the island can reach.
-          // When expanded (animation.value = 1), currentTitleWidth is nearly 0.
           final double targetExpandedWidth = maxRowWidth - currentTitleWidth -
               (spaceBetween * (1 - _animation.value));
 
           // Interpolate current island width:
-          // Start: collapsedIslandWidth
-          // End (capped): targetExpandedWidth (which should be close to maxRowWidth)
-
-          // Interpolate the width from collapsed size to the calculated available space
           final double currentIslandWidth = Tween<double>(
               begin: collapsedIslandWidth,
               end: targetExpandedWidth
@@ -386,6 +386,9 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
               _animation);
           final double currentRadius = Tween<double>(
               begin: _collapsedHeight / 2, end: 20.0).evaluate(_animation);
+
+          // NOTE: blendedColor is no longer used for background, but the previous code still calculated it.
+          // We can remove it entirely, but keeping your original code structure intact as requested:
           final Color blendedColor = Color.lerp(
               islandCollapsedColor, islandExpandedColor, _animation.value)!;
 
@@ -395,7 +398,6 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 1. Static Title Part (Left side - Shrinks and disappears)
-              // We reuse the animation values calculated above
               SizeTransition(
                 sizeFactor: ReverseAnimation(_animation),
                 // Shrink when animation forwards
@@ -414,7 +416,6 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
               ),
 
               // 2. Dynamic Island Part (Right side - Expands/Contracts)
-              // NOTE: The `AnimatedBuilder` for the island is now the outer one.
               GestureDetector(
                 onTap: _toggleExpansion,
                 child: Container(
@@ -422,7 +423,9 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
                   width: finalIslandWidth, // Use the calculated width
 
                   decoration: BoxDecoration(
-                    color: blendedColor,
+                    // --- FIX: Apply the gradient instead of a single color ---
+                    gradient: dynamicGradient,
+                    // --- blendedColor property removed as it conflicts with gradient ---
                     borderRadius: BorderRadius.circular(currentRadius),
                     boxShadow: [
                       BoxShadow(
