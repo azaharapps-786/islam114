@@ -1,4 +1,3 @@
-// lib/presentation/widgets/surah_card.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,6 +5,7 @@ class SurahCard extends StatefulWidget {
   final int number;
   final String name;
   final String language;
+  final bool isTafseer;        // NEW: Whether this card is in Tafseer mode
   final double fontScale;
 
   const SurahCard({
@@ -13,6 +13,7 @@ class SurahCard extends StatefulWidget {
     required this.number,
     required this.name,
     required this.language,
+    required this.isTafseer,   // Now required
     required this.fontScale,
   });
 
@@ -60,7 +61,7 @@ class _SurahCardState extends State<SurahCard>
       arguments: {
         'surahNumber': widget.number,
         'language': widget.language,
-        'isTafseer': false, // Set to true for tafseer pages
+        'isTafseer': widget.isTafseer, // NOW PASSES THE CORRECT VALUE!
       },
     );
   }
@@ -116,11 +117,22 @@ class _SurahCardState extends State<SurahCard>
                     color: theme.colorScheme.onSurface,
                   ),
                 ),
+                subtitle: widget.isTafseer
+                    ? Text(
+                  'Tafseer',
+                  style: TextStyle(
+                    fontSize: 12 * widget.fontScale,
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+                    : null, // Optional: shows "Tafseer" label only in tafseer mode
                 trailing: Icon(
                   Icons.arrow_forward_ios,
                   size: 16,
                   color: theme.colorScheme.onSurface.withOpacity(0.6),
                 ),
+                // Also handle direct onTap for accessibility
                 onTap: () {
                   Navigator.pushNamed(
                     context,
@@ -128,7 +140,7 @@ class _SurahCardState extends State<SurahCard>
                     arguments: {
                       'surahNumber': widget.number,
                       'language': widget.language,
-                      'isTafseer': false, // Set to true for tafseer pages
+                      'isTafseer': widget.isTafseer,
                     },
                   );
                 },

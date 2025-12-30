@@ -425,6 +425,7 @@ class _SurahListPageState extends State<SurahListPage>
                         number: surah['number'],
                         name: surah['name'],
                         language: _language,
+                        isTafseer: _isTafseer,
                         fontScale: fontScale,
                       ),
                     );

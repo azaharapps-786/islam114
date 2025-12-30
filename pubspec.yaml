@@ -15,7 +15,7 @@ dependencies:
   share_plus: ^7.0.1
 
   # BLoC Dependencies
-  bloc: ^8.1.3  # Added explicit for direct imports
+  bloc: ^8.1.3
   flutter_bloc: ^8.1.3
   equatable: ^2.0.5
 
@@ -36,7 +36,7 @@ dependencies:
 
   vector_math: ^2.1.4
 
-  flutter_launcher_icons: "^0.13.1" # Use the latest version
+  flutter_launcher_icons: "^0.13.1"
 
   # For the custom fonts
   google_fonts: ^6.1.0
@@ -56,7 +56,7 @@ dependencies:
   path_provider: ^2.1.1
 
   # Location services for Namaz Times
-  geolocator: ^12.0.0  # Updated for better compatibility
+  geolocator: ^12.0.0
   geocoding: ^2.1.1
 
   # HTTP requests for API calls
@@ -66,9 +66,9 @@ dependencies:
   hijri: ^3.0.0
   table_calendar: ^3.0.9
 
-  # Compass for Qibla direction - using alternative package
-  sensors_plus: ^5.0.1  # Updated for stream API stability
-  permission_handler: ^11.3.1  # Minor update for permissions
+  # Compass for Qibla direction
+  sensors_plus: ^5.0.1
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
@@ -79,14 +79,13 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # Add your custom assets and fonts here
   assets:
     - assets/images/
     - assets/icons/
-    - assets/sounds/  # For Tasbeeh sound files
-    - assets/audio/azan.mp3   # For Azan sound files
-    - assets/dictionaries/quran_dictionary_english.json  # Quran Dictionary English
-    - assets/dictionaries/quran_dictionary_assamese.json # Quran Dictionary Assamese
+    - assets/sounds/
+    - assets/audio/azan.mp3
+    - assets/dictionaries/quran_dictionary_english.json
+    - assets/dictionaries/quran_dictionary_assamese.json
     - assets/data/sahih_al_bukhari.json
     - assets/data/surah_list_english.json
     - assets/data/surah_list_assamese.json
@@ -102,6 +101,15 @@ flutter:
     - assets/data/quran_assamese.json
     - assets/data/quran_hindi.json
     - assets/data/quran_english.json
+    - assets/data/quran_assamese_tafseer.json
+    - assets/data/quran_english_tafseer.json
+    - assets/data/quran_arabic_tafseer.json
+    - assets/data/quran_bengali_tafseer.json
+    - assets/data/quran_bengali.json
+    - assets/data/quran_bangla_tafseer.json
+    - assets/data/quran_bangla.json
+    - assets/data/quran_hindi_tafseer.json
+
 
   fonts:
     - family: Uthmanic
@@ -113,16 +121,9 @@ flutter:
         - asset: assets/fonts/Lato-Bold.ttf
           weight: 700
 
-# ===================================================================
-# ADDED THIS SECTION FOR APP ICON
-# ===================================================================
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/icons/icon.png" # The path to your icon file
-
-  # Optional: For modern Android adaptive icons
-  # It's good practice to include this. It uses your icon as the main logo.
-  # You can change the background color to match your app's theme.
-  adaptive_icon_background: "#FFFFFF" # A white background
-  adaptive_icon_foreground: "assets/icons/icon.png" # Your logo on top
+  image_path: "assets/icons/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icons/icon.png"
