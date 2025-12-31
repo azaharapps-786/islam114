@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:provider/provider.dart';
-// Note: Ensure you have the 'haptic_feedback' package in your pubspec.yaml
 import 'package:haptic_feedback/haptic_feedback.dart';
 
-// IMPORTANT: Replace these with your actual import paths
-import '../../core/services/settings_service.dart'; // Placeholder
-import '../widgets/more_option_card.dart'; // Placeholder 
-
-// --- Main Page Widget ---
+import '../../core/services/settings_service.dart';
+import '../widgets/more_option_card.dart';
 
 class MoreOptionsPage extends StatefulWidget {
   const MoreOptionsPage({super.key});
@@ -33,9 +29,10 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
       vsync: this,
     );
 
-    // Animation setup remains the same
     const stagger = 0.08;
-    _cardFadeAnimations = List.generate(6, (index) {
+
+    // 7 cards including Amal Namah
+    _cardFadeAnimations = List.generate(7, (index) {
       final begin = index * stagger;
       final end = math.min(1.0, 0.85 + (index * stagger));
       return Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -46,7 +43,7 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
       );
     });
 
-    _cardScaleAnimations = List.generate(6, (index) {
+    _cardScaleAnimations = List.generate(7, (index) {
       final begin = 0.05 + (index * stagger);
       final end = math.min(1.0, 0.9 + (index * stagger));
       return Tween<double>(begin: 0.9, end: 1.0).animate(
@@ -57,7 +54,7 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
       );
     });
 
-    _cardBounceAnimations = List.generate(6, (index) {
+    _cardBounceAnimations = List.generate(7, (index) {
       final begin = 0.1 + (index * stagger);
       final end = math.min(1.0, 0.95 + (index * stagger));
       return Tween<double>(begin: 20.0, end: 0.0).animate(
@@ -84,9 +81,15 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
     {'title': 'Library', 'icon': Icons.auto_stories, 'color': Colors.purple, 'route': '/library'},
     {'title': 'Quran & Science', 'icon': Icons.science_outlined, 'color': Colors.teal, 'route': '/quranScience'},
     {'title': '99 Names', 'icon': Icons.star_border, 'color': Colors.amber, 'route': '/allahNames'},
+    {
+      'title': 'Amal Namah',
+      'icon': Icons.book_outlined,
+      'color': Colors.orange[700],
+      'route': '/amalNamah',
+      'skipLanguageDialog': true, // ← This tells the app to skip the dialog for this card
+    },
   ];
 
-  // The dialog function remains the same, calling the updated private widget
   void _showLanguageSelectionDialog(BuildContext context, String route, String title) {
     showGeneralDialog(
       context: context,
@@ -95,11 +98,9 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
       barrierColor: Colors.black.withOpacity(0.5),
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (context, animation1, animation2) {
-        // This is where the new, polished widget is called
         return _MoreOptionsLanguageDialog(route: route, title: title);
       },
       transitionBuilder: (context, animation1, animation2, child) {
-        // The bounce-in animation for the dialog
         return FadeTransition(
           opacity: CurvedAnimation(
             parent: animation1,
@@ -119,7 +120,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
 
   @override
   Widget build(BuildContext context) {
-    // Note: Provider is accessed with 'listen: true' here for real-time updates if settings change
     final double fontScale = Provider.of<SettingsService>(context).fontScale;
     final theme = Theme.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
@@ -176,6 +176,7 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
           itemCount: _moreOptions.length,
           itemBuilder: (context, index) {
             final option = _moreOptions[index];
+
             return AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
@@ -190,11 +191,29 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
                         icon: option['icon'],
                         color: option['color'],
                         fontScale: fontScale,
-                        onTap: () => _showLanguageSelectionDialog(
-                          context,
-                          option['route'],
-                          option['title'],
-                        ),
+                        onTap: () {
+                          // Check if this card should skip the language dialog
+                          final bool skipDialog = option['skipLanguageDialog'] == true;
+
+                          if (skipDialog) {
+                            // Direct navigation for Amal Namah (English only)
+                            Navigator.pushNamed(
+                              context,
+                              option['route'],
+                              arguments: {
+                                'language': 'english',
+                                'title': option['title'],
+                              },
+                            );
+                          } else {
+                            // Show language dialog for all other features
+                            _showLanguageSelectionDialog(
+                              context,
+                              option['route'],
+                              option['title'],
+                            );
+                          }
+                        },
                       ),
                     ),
                   ),
@@ -208,8 +227,7 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
   }
 }
 
-// --- REDESIGNED LANGUAGE DIALOG WIDGET ---
-
+// Language Selection Dialog — unchanged
 class _MoreOptionsLanguageDialog extends StatelessWidget {
   final String route;
   final String title;
@@ -219,7 +237,6 @@ class _MoreOptionsLanguageDialog extends StatelessWidget {
     required this.title,
   });
 
-  // A simplified list for the demonstration. Add more as needed.
   final List<String> availableLanguages = const [
     'English',
     'Assamese',
@@ -229,29 +246,25 @@ class _MoreOptionsLanguageDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Provider is accessed with 'listen: false' as the dialog itself doesn't need to rebuild on setting changes
     final double fontScale = Provider.of<SettingsService>(context, listen: false).fontScale;
     final theme = Theme.of(context);
 
-    // We wrap our content in a Center to ensure it respects the showGeneralDialog
-    // pageBuilder (which takes up the full screen) and appears centered.
     return Center(
-      child: Material( // Material widget for proper theming/elevation
+      child: Material(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(28.0), // M3 corner radius
+        borderRadius: BorderRadius.circular(28.0),
         elevation: 10,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 16.0),
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               maxWidth: 320,
-              maxHeight: 400, // Max height to allow scroll if more languages are added
+              maxHeight: 400,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Title
                 Text(
                   'Select Language',
                   textAlign: TextAlign.start,
@@ -263,7 +276,6 @@ class _MoreOptionsLanguageDialog extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // Language List (Scrollable)
                 Flexible(
                   child: ListView.separated(
                     shrinkWrap: true,
@@ -276,19 +288,13 @@ class _MoreOptionsLanguageDialog extends StatelessWidget {
                     ),
                     itemBuilder: (context, index) {
                       final language = availableLanguages[index];
-                      return _buildLanguageTile(
-                        context,
-                        language,
-                        fontScale,
-                        theme,
-                      );
+                      return _buildLanguageTile(context, language, fontScale, theme);
                     },
                   ),
                 ),
 
                 const SizedBox(height: 16),
 
-                // Footer Buttons (Cancel and More Languages)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -307,7 +313,6 @@ class _MoreOptionsLanguageDialog extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // Action for languages not in the main list
                     TextButton(
                       onPressed: () {
                         Haptics.vibrate(HapticsType.medium);
@@ -334,19 +339,11 @@ class _MoreOptionsLanguageDialog extends StatelessWidget {
     );
   }
 
-  // Helper method now uses a proper ListTile for better standard design
   Widget _buildLanguageTile(
-      BuildContext context,
-      String language,
-      double fontScale,
-      ThemeData theme
-      ) {
+      BuildContext context, String language, double fontScale, ThemeData theme) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
-      leading: Icon(
-        Icons.translate,
-        color: theme.colorScheme.primary,
-      ),
+      leading: Icon(Icons.translate, color: theme.colorScheme.primary),
       title: Text(
         language,
         style: TextStyle(
@@ -362,11 +359,10 @@ class _MoreOptionsLanguageDialog extends StatelessWidget {
       ),
       onTap: () async {
         if (await Haptics.canVibrate()) {
-          Haptics.vibrate(HapticsType.light); // Subtle feedback on selection
+          Haptics.vibrate(HapticsType.light);
         }
 
         Navigator.of(context).pop();
-        // Navigate to the feature route with the selected language
         Navigator.pushNamed(
           context,
           route,

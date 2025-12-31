@@ -4,13 +4,14 @@ import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 
 import 'core/services/settings_service.dart';
+import 'core/services/deeds_service.dart';
 import 'core/themes/app_theme.dart';
 import 'core/providers/prayer_times_provider.dart';
 import 'presentation/pages/home_page.dart';
 import 'presentation/pages/settings_page.dart';
 import 'presentation/pages/surah_list_page.dart';
 import 'presentation/pages/surah_detail_page.dart';
-import 'presentation/pages/bookmarks_page.dart'; // Add this import
+import 'presentation/pages/bookmarks_page.dart';
 import 'presentation/pages/tasbeeh_page.dart';
 import 'presentation/pages/namaz_times_page.dart';
 import 'presentation/pages/quran_dictionary_page.dart';
@@ -18,22 +19,19 @@ import 'presentation/pages/islamic_calendar_page.dart';
 import 'presentation/pages/more_options_page.dart';
 import 'presentation/pages/bukhari_hadith_page.dart';
 import 'presentation/pages/qibla_page.dart';
-
+import 'presentation/pages/amal_namah_dashboard.dart'; // ← Correct import for the new dashboard
 
 // Global RouteObserver instance for app-wide navigation awareness.
 final RouteObserver<PageRoute<dynamic>> routeObserver = RouteObserver<PageRoute<dynamic>>();
 
 void main() async {
-  // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -46,12 +44,9 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => SettingsService(),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => PrayerTimesProvider(),
-        ),
+        ChangeNotifierProvider(create: (_) => SettingsService()),
+        ChangeNotifierProvider(create: (_) => PrayerTimesProvider()),
+        ChangeNotifierProvider(create: (_) => DeedsService()),
       ],
       child: const Islam114App(),
     ),
@@ -98,15 +93,12 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
   }
 
   Future<void> _initializeApp() async {
-    // Initialize settings in the background
     final settingsService = Provider.of<SettingsService>(context, listen: false);
     await settingsService.loadSettings();
 
-    // Initialize prayer times provider
     final prayerTimesProvider = Provider.of<PrayerTimesProvider>(context, listen: false);
     await prayerTimesProvider.initialize();
 
-    // Mark as initialized and start animation
     if (mounted) {
       setState(() {
         _isInitialized = true;
@@ -159,18 +151,15 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
             '/hadith': (context) => const BukhariHadithPage(),
             '/qibla': (context) => const QiblaPage(),
           },
-          navigatorObservers: [routeObserver], // Registers the observer for route change detection.
+          navigatorObservers: [routeObserver],
           onGenerateRoute: (settings) {
-            // Handle routes with arguments
             if (settings.name != null) {
-              // Check if it's one of our special routes
               if (settings.name == '/rabbanaDuas' ||
                   settings.name == '/daroodIbrahim' ||
                   settings.name == '/niyat' ||
                   settings.name == '/library' ||
                   settings.name == '/quranScience' ||
                   settings.name == '/allahNames') {
-
                 final args = settings.arguments as Map<String, dynamic>?;
                 final language = args?['language'] ?? 'english';
                 final title = args?['title'] ?? 'Islamic Content';
@@ -179,6 +168,20 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
                   builder: (context) => PlaceholderPage(
                     title: title,
                     language: language,
+                  ),
+                );
+              }
+
+              // Amal Namah – now opens the new Dashboard
+              if (settings.name == '/amalNamah') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                final language = args?['language'] ?? 'english';
+                final title = args?['title'] ?? 'Amal Namah';
+
+                return MaterialPageRoute(
+                  builder: (context) => AmalNamahDashboard(
+                    language: language,
+                    title: title,
                   ),
                 );
               }
@@ -191,7 +194,7 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
   }
 }
 
-// Splash screen widget
+// SplashScreen – restored exactly as in your original code
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -221,24 +224,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     );
 
     _logoAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: Curves.elasticOut,
-      ),
+      CurvedAnimation(parent: _logoController, curve: Curves.elasticOut),
     );
 
     _textAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _textController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _textController, curve: Curves.easeInOut),
     );
 
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: const Interval(0.6, 1.0, curve: Curves.easeInOut),
-      ),
+      CurvedAnimation(parent: _logoController, curve: const Interval(0.6, 1.0, curve: Curves.easeInOut)),
     )..addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _logoController.reverse();
@@ -247,7 +241,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       }
     });
 
-    // Start animations
     _logoController.forward();
     _textController.forward();
   }
@@ -267,17 +260,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1E88E5), // Blue
-              Color(0xFF1565C0), // Darker blue
-            ],
+            colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
           ),
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo with animation
               AnimatedBuilder(
                 animation: Listenable.merge([_logoAnimation, _pulseAnimation]),
                 builder: (context, child) {
@@ -297,17 +286,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                           ),
                         ],
                       ),
-                      child: const Icon(
-                        Icons.mosque,
-                        size: 70,
-                        color: Color(0xFF1E88E5),
-                      ),
+                      child: const Icon(Icons.mosque, size: 70, color: Color(0xFF1E88E5)),
                     ),
                   );
                 },
               ),
               const SizedBox(height: 40),
-              // App name with animation
               AnimatedBuilder(
                 animation: _textAnimation,
                 builder: (context, child) {
@@ -317,19 +301,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       offset: Offset(0, 20 * (1 - _textAnimation.value)),
                       child: const Text(
                         'Islam114',
-                        style: TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          letterSpacing: 1.2,
-                        ),
+                        style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.2),
                       ),
                     ),
                   );
                 },
               ),
               const SizedBox(height: 10),
-              // Tagline with animation
               AnimatedBuilder(
                 animation: _textAnimation,
                 builder: (context, child) {
@@ -339,18 +317,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       offset: Offset(0, 20 * (1 - _textAnimation.value)),
                       child: const Text(
                         'Your Islamic Companion',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white70,
-                          letterSpacing: 0.5,
-                        ),
+                        style: TextStyle(fontSize: 16, color: Colors.white70, letterSpacing: 0.5),
                       ),
                     ),
                   );
                 },
               ),
               const SizedBox(height: 60),
-              // Loading indicator
               AnimatedBuilder(
                 animation: _textAnimation,
                 builder: (context, child) {
@@ -359,10 +332,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     child: const SizedBox(
                       width: 30,
                       height: 30,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 3,
-                      ),
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
                     ),
                   );
                 },
@@ -375,7 +345,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 }
 
-// Updated Placeholder page to show the selected language
+// PlaceholderPage – restored exactly as in your original code
 class PlaceholderPage extends StatelessWidget {
   final String title;
   final String language;
@@ -399,34 +369,21 @@ class PlaceholderPage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.construction,
-              size: 64,
-              color: Colors.grey,
-            ),
+            const Icon(Icons.construction, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
             Text(
               '$title Page',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               'Language: ${language[0].toUpperCase() + language.substring(1)}',
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 8),
             const Text(
               'This page is under construction',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 24),
             ElevatedButton(

@@ -70,6 +70,10 @@ dependencies:
   sensors_plus: ^5.0.1
   permission_handler: ^11.3.1
 
+  # --- ADDED DEPENDENCIES ---
+  lottie: ^2.7.0
+  fl_chart: ^0.68.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -83,6 +87,7 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/sounds/
+    - assets/animations/ # <-- ADDED ASSET PATH
     - assets/audio/azan.mp3
     - assets/dictionaries/quran_dictionary_english.json
     - assets/dictionaries/quran_dictionary_assamese.json
@@ -109,7 +114,6 @@ flutter:
     - assets/data/quran_bangla_tafseer.json
     - assets/data/quran_bangla.json
     - assets/data/quran_hindi_tafseer.json
-
 
   fonts:
     - family: Uthmanic
