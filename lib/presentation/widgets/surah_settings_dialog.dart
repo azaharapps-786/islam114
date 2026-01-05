@@ -1,21 +1,16 @@
-// lib/presentation/widgets/surah_settings_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert'; // Import for JSON handling
-import 'package:flutter/services.dart'; // Import for rootBundle
 
 import '../../core/services/settings_service.dart';
 
 class SurahSettingsDialog extends StatefulWidget {
   final String language;
-  final int surahNumber;
-  final bool isTafseer;
+  final bool isTafseerMode;
 
   const SurahSettingsDialog({
     super.key,
     required this.language,
-    required this.surahNumber,
-    required this.isTafseer,
+    required this.isTafseerMode,
   });
 
   @override
@@ -24,8 +19,8 @@ class SurahSettingsDialog extends StatefulWidget {
 
 class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
   late SurahDisplaySettings _currentSettings;
-  final List<String> _availableLanguages = ['english', 'assamese', 'hindi', 'bengali'];
-  final List<String> _availableTafseers = ['english', 'assamese', 'hindi', 'bengali', 'arabic'];
+
+  static const List<String> _languages = ['arabic', 'english', 'hindi', 'assamese', 'bengali'];
 
   @override
   void initState() {
@@ -38,50 +33,86 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
   void _updateSettings() {
     final settingsService = Provider.of<SettingsService>(context, listen: false);
     settingsService.updateSurahDisplaySettings(widget.language, _currentSettings);
-    // IMPORTANT: Call notifyListeners to trigger a rebuild in VerseCard
-    settingsService.notifyListeners();
   }
 
-  void _toggleOption(String option, bool value) {
-    setState(() {
-      switch (option) {
-        case 'showArabic':
-          _currentSettings = _currentSettings.copyWith(showArabic: value);
-          break;
-        case 'showTranslation':
-          _currentSettings = _currentSettings.copyWith(showTranslation: value);
-          break;
-        case 'showTransliteration':
-          _currentSettings = _currentSettings.copyWith(showTransliteration: value);
-          break;
-        case 'showTafseer':
-          _currentSettings = _currentSettings.copyWith(showTafseer: value);
-          break;
-      }
+  void _toggleArabic(bool value) {
+    setState(() => _currentSettings = _currentSettings.copyWith(showArabic: value));
+    _updateSettings();
+  }
 
-      if (!_currentSettings.hasVisibleContent) {
-        _currentSettings = _currentSettings.copyWith(showArabic: true);
+  void _toggleTranslation(String lang, bool value) {
+    setState(() {
+      if (lang == widget.language) {
+        _currentSettings = _currentSettings.copyWith(showTranslation: value);
+      } else {
+        final updated = Map<String, bool>.from(_currentSettings.additionalTranslations);
+        updated[lang] = value;
+        _currentSettings = _currentSettings.copyWith(additionalTranslations: updated);
       }
     });
     _updateSettings();
   }
 
-  void _toggleAdditionalTranslation(String language, bool value) {
+  void _toggleTransliteration(String lang, bool value) {
     setState(() {
-      final updatedTranslations = Map<String, bool>.from(_currentSettings.additionalTranslations);
-      updatedTranslations[language] = value;
-      _currentSettings = _currentSettings.copyWith(additionalTranslations: updatedTranslations);
+      if (lang == widget.language) {
+        _currentSettings = _currentSettings.copyWith(showTransliteration: value);
+      } else {
+        // FIXED: Use the separate additionalTransliterations map
+        final updated = Map<String, bool>.from(_currentSettings.additionalTransliterations);
+        updated[lang] = value;
+        _currentSettings = _currentSettings.copyWith(additionalTransliterations: updated);
+      }
     });
     _updateSettings();
   }
 
-  void _toggleAdditionalTafseer(String language, bool value) {
+  void _toggleTafseer(String lang, bool value) {
     setState(() {
-      final updatedTafseers = Map<String, bool>.from(_currentSettings.additionalTafseers);
-      updatedTafseers[language] = value;
-      _currentSettings = _currentSettings.copyWith(additionalTafseers: updatedTafseers);
+      if (lang == widget.language) {
+        _currentSettings = _currentSettings.copyWith(showTafseer: value);
+      } else {
+        final updated = Map<String, bool>.from(_currentSettings.additionalTafseers);
+        updated[lang] = value;
+        _currentSettings = _currentSettings.copyWith(additionalTafseers: updated);
+      }
     });
     _updateSettings();
+  }
+
+  bool _isTranslationEnabled(String lang) =>
+      lang == widget.language ? _currentSettings.showTranslation : _currentSettings.additionalTranslations[lang] ?? false;
+
+  bool _isTransliterationEnabled(String lang) =>
+      lang == widget.language ? _currentSettings.showTransliteration : _currentSettings.additionalTransliterations[lang] ?? false; // FIXED: Use separate map
+
+  bool _isTafseerEnabled(String lang) =>
+      lang == widget.language ? _currentSettings.showTafseer : _currentSettings.additionalTafseers[lang] ?? false;
+
+  String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  Widget _buildSectionTitle(String title, double fontScale) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 18 * fontScale,
+          fontWeight: FontWeight.bold,
+          color: Theme.of(context).primaryColor,
+        ),
+      ),
+    );
+  }
+
+  // Fixed: onChanged now accepts bool parameter (required by SwitchListTile)
+  Widget _buildSwitch(String title, bool value, void Function(bool) onChanged) {
+    return SwitchListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      title: Text(title, style: const TextStyle(fontSize: 16)),
+      value: value,
+      onChanged: onChanged, // Directly pass the function that accepts bool
+    );
   }
 
   @override
@@ -89,140 +120,80 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
     final theme = Theme.of(context);
     final settingsService = Provider.of<SettingsService>(context);
     final double fontScale = settingsService.fontScale;
-    final isArabicQuran = widget.language == 'arabic';
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      margin: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Display Settings',
-            style: TextStyle(
-              fontSize: 20 * fontScale,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-
-          // --- FIX: Make main toggles visible for ALL languages ---
-          _buildOptionSwitch(
-            title: 'Arabic Text',
-            value: _currentSettings.showArabic,
-            onChanged: (value) => _toggleOption('showArabic', value),
-            enabled: true,
-            fontScale: fontScale,
-          ),
-
-          // FIX: This block should now be visible for ALL non-Arabic languages
-          if (!isArabicQuran) ...[
-            _buildOptionSwitch(
-              title: '${_capitalize(widget.language)} Translation',
-              value: _currentSettings.showTranslation,
-              onChanged: (value) => _toggleOption('showTranslation', value),
-              fontScale: fontScale,
-            ),
-
-            _buildOptionSwitch(
-              title: '${_capitalize(widget.language)} Transliteration',
-              value: _currentSettings.showTransliteration,
-              onChanged: (value) => _toggleOption('showTransliteration', value),
-              fontScale: fontScale,
-            ),
-          ],
-
-          if (widget.isTafseer) ...[
-            _buildOptionSwitch(
-              title: '${_capitalize(widget.language)} Tafseer',
-              value: _currentSettings.showTafseer,
-              onChanged: (value) => _toggleOption('showTafseer', value),
-              fontScale: fontScale,
-            ),
-          ],
-          // --- End of main toggles block ---
-
-          const SizedBox(height: 20),
-
-          // Advanced Options Expansion
-          _buildAdvancedOptions(theme, fontScale),
-
-          const SizedBox(height: 20),
-
-          // Close Button
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Close', style: TextStyle(fontSize: 16 * fontScale)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOptionSwitch({
-    required String title,
-    required bool value,
-    required Function(bool) onChanged,
-    required double fontScale,
-    bool enabled = true,
-  }) {
-    return SwitchListTile(
-      title: Text(title, style: TextStyle(fontSize: 16 * fontScale)),
-      value: value,
-      onChanged: enabled ? onChanged : null,
-    );
-  }
-
-  Widget _buildAdvancedOptions(ThemeData theme, double fontScale) {
-    return ExpansionTile(
-      title: Text('Advanced Options', style: TextStyle(fontSize: 16 * fontScale)),
-      children: [
-        _buildSectionTitle('Additional Translations', fontScale),
-        ..._availableLanguages.where((lang) => lang != widget.language).map((lang) {
-          return _buildOptionSwitch(
-            title: '${_capitalize(lang)} Translation',
-            value: _currentSettings.additionalTranslations[lang] ?? false,
-            onChanged: (value) => _toggleAdditionalTranslation(lang, value),
-            fontScale: fontScale,
-          );
-        }).toList(),
-        if (widget.isTafseer) ...[
-          _buildSectionTitle('Additional Tafseers', fontScale),
-          ..._availableTafseers.where((lang) => lang != widget.language).map((lang) {
-            return _buildOptionSwitch(
-              title: '${_capitalize(lang)} Tafseer',
-              value: _currentSettings.additionalTafseers[lang] ?? false,
-              onChanged: (value) => _toggleAdditionalTafseer(lang, value),
-              fontScale: fontScale,
-            );
-          }).toList(),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildSectionTitle(String title, double fontScale) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 14 * fontScale,
-          fontWeight: FontWeight.bold,
-          color: Colors.grey[600],
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: theme.cardColor,
+      title: Center(
+        child: Text(
+          'Display Settings',
+          style: TextStyle(fontSize: 22 * fontScale, fontWeight: FontWeight.bold),
         ),
       ),
-    );
-  }
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Arabic Text Section
+              _buildSectionTitle('Arabic Text', fontScale),
+              _buildSwitch(
+                'Show Arabic Text',
+                _currentSettings.showArabic,
+                _toggleArabic, // Direct pass — accepts bool
+              ),
 
-  String _capitalize(String text) {
-    if (text.isEmpty) return text;
-    return text[0].toUpperCase() + text.substring(1);
+              const Divider(height: 32),
+
+              // Translations Section
+              _buildSectionTitle('Translations', fontScale),
+              ..._languages.where((l) => l != 'arabic').map((lang) {
+                final bool isPrimary = lang == widget.language;
+                return _buildSwitch(
+                  '${_capitalize(lang)} Translation${isPrimary ? ' (Primary)' : ''}',
+                  _isTranslationEnabled(lang),
+                      (bool newValue) => _toggleTranslation(lang, newValue),
+                );
+              }),
+
+              const Divider(height: 32),
+
+              // Transliterations Section
+              _buildSectionTitle('Transliterations', fontScale),
+              ..._languages.where((l) => l != 'arabic').map((lang) {
+                final bool isPrimary = lang == widget.language;
+                return _buildSwitch(
+                  '${_capitalize(lang)} Transliteration${isPrimary ? ' (Primary)' : ''}',
+                  _isTransliterationEnabled(lang),
+                      (bool newValue) => _toggleTransliteration(lang, newValue),
+                );
+              }),
+
+              // Tafseer Section (only when in Tafseer mode)
+              if (widget.isTafseerMode) ...[
+                const Divider(height: 32),
+                _buildSectionTitle('Tafseer', fontScale),
+                ..._languages.map((lang) {
+                  final bool isPrimary = lang == widget.language;
+                  return _buildSwitch(
+                    '${_capitalize(lang)} Tafseer${isPrimary ? ' (Primary)' : ''}',
+                    _isTafseerEnabled(lang),
+                        (bool newValue) => _toggleTafseer(lang, newValue),
+                  );
+                }),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Close', style: TextStyle(fontSize: 16 * fontScale)),
+        ),
+      ],
+    );
   }
 }

@@ -49,8 +49,6 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
     final newSurahNumber = args?['surahNumber'] ?? 1;
     final newIsTafseer = args?['isTafseer'] ?? false;
 
-    debugPrint('SurahDetailPage args: language=$newLanguage, surah=$newSurahNumber, isTafseer=$newIsTafseer');
-
     if (newLanguage != _language ||
         newSurahNumber != _surahNumber ||
         newIsTafseer != _isTafseer) {
@@ -66,168 +64,118 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   Future<void> _loadSurahData() async {
     setState(() {
       _isLoading = true;
-      _surahName = 'সূরা $_surahNumber';
+      _surahName = 'Surah $_surahNumber';
     });
 
     try {
-      String jsonFile;
-      if (_isTafseer) {
-        jsonFile = 'assets/data/quran_${_language}_tafseer.json';
-      } else {
-        jsonFile = 'assets/data/quran_${_language}.json';
-      }
-
-      debugPrint('=== LOADING SURAH DATA ===');
-      debugPrint('Language: $_language');
-      debugPrint('Surah: $_surahNumber');
-      debugPrint('Is Tafseer: $_isTafseer');
-      debugPrint('Attempting to load file: $jsonFile');
+      final String jsonFile = _isTafseer
+          ? 'assets/data/quran_${_language}_tafseer.json'
+          : 'assets/data/quran_${_language}.json';
 
       final String jsonString = await rootBundle.loadString(jsonFile);
-      debugPrint('File loaded successfully! Size: ${jsonString.length} characters');
-
       final dynamic rawJson = json.decode(jsonString);
-      debugPrint('JSON decoded. Type: ${rawJson.runtimeType}');
 
       List<Map<String, dynamic>> verses = [];
 
       if (_isTafseer) {
-        debugPrint('Processing as TAFSEER (expecting Map with "1:1" keys)');
-
+        // Tafseer handling unchanged
         if (rawJson is Map<String, dynamic>) {
-          final Map<String, dynamic> tafseerMap = rawJson;
-          final List<Map<String, dynamic>> foundVerses = [];
+          final tafseerMap = rawJson as Map<String, dynamic>;
+          final foundVerses = <Map<String, dynamic>>[];
 
-          debugPrint('Tafseer map contains ${tafseerMap.length} total keys');
-
-          for (int verseNum = 1; verseNum <= 286; verseNum++) {
-            final String key = '$_surahNumber:$verseNum';
+          for (int v = 1; v <= 286; v++) {
+            final key = '$_surahNumber:$v';
             if (tafseerMap.containsKey(key)) {
-              final dynamic value = tafseerMap[key];
-              String tafseerText = '';
-
-              if (value is Map && value['text'] is String) {
-                tafseerText = value['text'];
-              } else if (value is String) {
-                tafseerText = value;
-              }
-
-              if (tafseerText.isNotEmpty) {
+              final value = tafseerMap[key];
+              final text = value is Map ? value['text'] : value.toString();
+              if (text.isNotEmpty) {
                 foundVerses.add({
-                  'id': verseNum,
-                  'aya': verseNum,
+                  'id': v,
+                  'aya': v,
                   'arabic': '',
                   'translation': '',
                   'transliteration': '',
-                  'tafseer': tafseerText,
+                  'tafseer': text,
                   'footnotes': '',
                 });
               }
             }
           }
-
-          debugPrint('Found ${foundVerses.length} tafseer verses for Surah $_surahNumber');
-
-          if (foundVerses.isEmpty) {
-            throw Exception('No tafseer verses found for this surah');
-          }
-
           verses = foundVerses;
-        } else {
-          throw Exception('Invalid tafseer format - expected Map, got ${rawJson.runtimeType}');
         }
-      }
-      // Arabic special case
-      else if (_language == 'arabic') {
-        debugPrint('Processing as ARABIC (special surah-per-object format)');
-
+      } else if (_language == 'arabic') {
+        // Arabic handling unchanged
         if (rawJson is List) {
-          final jsonData = rawJson;
-          final surahData = jsonData.firstWhere(
-                (surah) => (surah['id'] as num?)?.toInt() == _surahNumber,
+          final surahData = rawJson.firstWhere(
+                (s) => (s['id'] as num?)?.toInt() == _surahNumber,
             orElse: () => null,
           );
-
           if (surahData != null) {
             _surahName = surahData['name'] ?? 'سورة $_surahNumber';
             final versesList = surahData['verses'] as List?;
-            final rawVerses = versesList?.map((v) => Map<String, dynamic>.from(v)).toList() ?? [];
-
-            verses = rawVerses.map((verse) {
-              final String arabicText = verse['text'] ?? '';
+            verses = (versesList ?? []).map((v) {
+              final arabicText = v['text'] ?? '';
               return {
-                'id': verse['id'],
-                'text': arabicText,
+                'id': v['id'],
                 'arabic': arabicText,
-                'translation': _isTafseer ? '' : arabicText,
+                'translation': arabicText,
                 'transliteration': '',
-                'footnotes': '',
-                'tafseer': verse['tafseer'] ?? '',
+                'tafseer': v['tafseer'] ?? '',
               };
             }).toList();
-
-            debugPrint('Loaded ${verses.length} Arabic verses');
-          } else {
-            throw Exception('Arabic surah not found');
           }
-        } else {
-          throw Exception('Arabic JSON expected List, got ${rawJson.runtimeType}');
         }
-      }
-      // ==================== Other Languages (Support both formats) ====================
-      else {
-        debugPrint('Processing as NORMAL TRANSLATION');
-
+      } else {
+        // ALL OTHER LANGUAGES – unified handling (flat + nested)
         List<dynamic> verseList = [];
 
         if (rawJson is List) {
-          // Case 1: Flat list format (Assamese, English, Hindi, etc.)
-          if (rawJson.isNotEmpty && (rawJson[0].containsKey('sura') || rawJson[0].containsKey('surah'))) {
-            verseList = rawJson.where((verse) {
-              final int? suraNum = (verse['sura'] as num?)?.toInt() ??
-                  (verse['surah'] as num?)?.toInt();
-              return suraNum == _surahNumber;
+          // Flat format (English, Hindi, Assamese, etc.)
+          if (rawJson.isNotEmpty &&
+              (rawJson[0].containsKey('sura') || rawJson[0].containsKey('surah'))) {
+            verseList = rawJson.where((v) {
+              final num? n = v['sura'] ?? v['surah'];
+              return n?.toInt() == _surahNumber;
             }).toList();
-            debugPrint('Flat list format detected. Found ${verseList.length} verses');
           }
-          // Case 2: Nested surah format (Bengali style)
+          // Nested format (Bengali style)
           else if (rawJson.isNotEmpty && rawJson[0].containsKey('verses')) {
             final surahData = rawJson.firstWhere(
-                  (surah) => (surah['id'] as num?)?.toInt() == _surahNumber,
+                  (s) => (s['id'] as num?)?.toInt() == _surahNumber,
               orElse: () => null,
             );
-
             if (surahData != null) {
               verseList = surahData['verses'] as List;
-              _surahName = surahData['translation'] ?? 'সূরা $_surahNumber';
-              debugPrint('Nested Bengali format detected. Found ${verseList.length} verses');
+              // FIXED: Added 'bengali' field for surah name
+              _surahName = surahData['translation'] ??
+                  surahData['name'] ??
+                  surahData['bengali'] ??
+                  'Surah $_surahNumber';
             }
           }
         }
 
-        if (verseList.isEmpty) {
-          throw Exception('No verses found for surah $_surahNumber in $_language');
-        }
+        if (verseList.isEmpty) throw Exception('No verses found');
 
         verses = verseList.map((v) {
-          final Map<String, dynamic> verseMap = Map<String, dynamic>.from(v);
+          final map = Map<String, dynamic>.from(v);
 
-          // For Bengali: Force hide Arabic, only show Bengali translation
+          // Arabic is ALWAYS taken from 'text' field – never forced hidden
+          map['arabic'] = map['text'] ?? map['arabic'] ?? '';
+
+          // FIXED: Handle Bengali translation properly
           if (_language == 'bengali') {
-            verseMap['arabic'] = '';  // Hide Arabic
-            verseMap['translation'] = verseMap['translation'] ?? '';
+            map['translation'] = map['bengali'] ?? map['translation'] ?? map['text'] ?? '';
           } else {
-            // For other languages: normal behavior
-            verseMap['arabic'] = verseMap['text'] ?? verseMap['arabic'] ?? '';
-            verseMap['translation'] = verseMap['translation'] ?? '';
+            map['translation'] = map['translation'] ?? '';
           }
 
-          verseMap['id'] = verseMap['id'] ?? verseMap['aya'];
-          verseMap['transliteration'] = verseMap['transliteration'] ?? '';
-          verseMap['tafseer'] = '';
-          verseMap['footnotes'] = '';
+          map['id'] = map['id'] ?? map['aya'];
+          map['transliteration'] = map['transliteration'] ?? '';
+          map['tafseer'] = '';
+          map['footnotes'] = '';
 
-          return verseMap;
+          return map;
         }).toList();
       }
 
@@ -236,34 +184,27 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         _filteredVerses = List.from(verses);
         _isLoading = false;
       });
-
-      debugPrint('SUCCESS: Loaded ${_verses.length} verses for display');
-    } catch (e, stackTrace) {
-      debugPrint('=== ERROR LOADING SURAH DATA ===');
-      debugPrint('Language: $_language | Surah: $_surahNumber | Tafseer: $_isTafseer');
-      debugPrint('Error: $e');
-      debugPrint('Stack trace: $stackTrace');
+    } catch (e) {
       _createFallbackData();
     }
   }
 
   void _createFallbackData() {
     setState(() {
-      _surahName = _isTafseer ? 'সূরা $_surahNumber (তাফসীর)' : 'Surah $_surahNumber';
-      _verses = List.generate(7, (index) => {
-        'id': index + 1,
-        'aya': index + 1,
-        'arabic': 'বিসমিল্লাহির রাহমানির রাহীম',
+      _surahName = _isTafseer ? 'Surah $_surahNumber (Tafseer)' : 'Surah $_surahNumber';
+      _verses = List.generate(7, (i) => {
+        'id': i + 1,
+        'aya': i + 1,
+        'arabic': 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
         'translation': _isTafseer
-            ? 'তাফসীর ডাটা লোড হৈছে নাই।'
+            ? 'Tafseer data could not be loaded.'
             : 'In the name of Allah, the Most Gracious, the Most Merciful.',
         'transliteration': 'Bismillahir Rahmanir Rahim',
-        'tafseer': _isTafseer ? 'উদাহৰণ তাফসীর টেক্সট।' : '',
+        'tafseer': _isTafseer ? 'Example tafseer text.' : '',
       });
       _filteredVerses = List.from(_verses);
       _isLoading = false;
     });
-    debugPrint('FALLBACK DATA loaded (7 verses)');
   }
 
   void _filterVerses(String query) {
@@ -285,17 +226,15 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         final translation = (verse['translation'] ?? '').toString().toLowerCase();
         final transliteration = (verse['transliteration'] ?? '').toString().toLowerCase();
         final tafseer = (verse['tafseer'] ?? '').toString().toLowerCase();
-        final searchQuery = query.toLowerCase().trim();
+        final q = query.toLowerCase().trim();
 
-        if (_isVerseNumberPattern(searchQuery)) {
-          return _matchesVerseNumberPattern(verseNumber.toString(), searchQuery);
-        }
+        if (_isVerseNumberPattern(q)) return _matchesVerseNumberPattern(verseNumber.toString(), q);
 
-        return text.contains(searchQuery) ||
-            translation.contains(searchQuery) ||
-            transliteration.contains(searchQuery) ||
-            tafseer.contains(searchQuery) ||
-            verseNumber.toString().contains(searchQuery);
+        return text.contains(q) ||
+            translation.contains(q) ||
+            transliteration.contains(q) ||
+            tafseer.contains(q) ||
+            verseNumber.toString().contains(q);
       }).toList();
 
       if (mounted) {
@@ -307,30 +246,27 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
     });
   }
 
-  bool _isVerseNumberPattern(String query) =>
-      RegExp(r'^(\d+)[:-]?(\d+)?[-:]?(\d+)?$').hasMatch(query);
+  bool _isVerseNumberPattern(String q) => RegExp(r'^(\d+)[:-]?(\d+)?[-:]?(\d+)?$').hasMatch(q);
 
-  bool _matchesVerseNumberPattern(String verseNumber, String query) {
+  bool _matchesVerseNumberPattern(String v, String q) {
     try {
-      final currentVerse = int.tryParse(verseNumber) ?? 0;
-      if (RegExp(r'^\d+$').hasMatch(query)) {
-        return currentVerse == (int.tryParse(query) ?? 0);
-      }
-      if (query.contains(':')) {
-        final parts = query.split(':');
-        if (parts.length == 2) {
-          final surahPart = int.tryParse(parts[0]) ?? 0;
-          final versePart = int.tryParse(parts[1].trim()) ?? 0;
-          if (parts[1].trim().isEmpty) return surahPart == _surahNumber;
-          return surahPart == _surahNumber && versePart == currentVerse;
+      final cv = int.tryParse(v) ?? 0;
+      if (RegExp(r'^\d+$').hasMatch(q)) return cv == (int.tryParse(q) ?? 0);
+      if (q.contains(':')) {
+        final p = q.split(':');
+        if (p.length == 2) {
+          final sp = int.tryParse(p[0]) ?? 0;
+          final vp = int.tryParse(p[1].trim()) ?? 0;
+          if (p[1].trim().isEmpty) return sp == _surahNumber;
+          return sp == _surahNumber && vp == cv;
         }
       }
-      if (query.contains('-')) {
-        final parts = query.split('-');
-        if (parts.length == 2) {
-          final start = int.tryParse(parts[0]) ?? 0;
-          final end = int.tryParse(parts[1]) ?? 0;
-          return currentVerse >= start && currentVerse <= end;
+      if (q.contains('-')) {
+        final p = q.split('-');
+        if (p.length == 2) {
+          final s = int.tryParse(p[0]) ?? 0;
+          final e = int.tryParse(p[1]) ?? 0;
+          return cv >= s && cv <= e;
         }
       }
       return false;
@@ -349,9 +285,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   void _toggleSearch() {
     setState(() => _showSearchBar = !_showSearchBar);
     if (_showSearchBar) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _searchFocusNode.requestFocus();
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocusNode.requestFocus());
     } else {
       _clearSearch();
     }
@@ -362,29 +296,25 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => SurahSettingsDialog(
+      builder: (_) => SurahSettingsDialog(
         language: _language,
-        surahNumber: _surahNumber,
-        isTafseer: _isTafseer,
+        isTafseerMode: _isTafseer,
       ),
     );
   }
 
   void _shareVerse(int verseNumber, String arabic, String translation) {
-    final text = _isTafseer
-        ? 'সূরা $_surahNumber:$verseNumber\n\n$translation'
-        : '$_surahNumber:$verseNumber\n$arabic\n\n$translation';
+    final prefix = 'Surah $_surahNumber:$verseNumber';
+    final text = _isTafseer ? '$prefix\n\n$translation' : '$prefix\n$arabic\n\n$translation';
     Share.share(text);
   }
 
   void _copyVerse(int verseNumber, String arabic, String translation) {
-    final text = _isTafseer
-        ? 'সূরা $_surahNumber:$verseNumber\n\n$translation'
-        : '$_surahNumber:$verseNumber\n$arabic\n\n$translation';
+    final prefix = 'Surah $_surahNumber:$verseNumber';
+    final text = _isTafseer ? '$prefix\n\n$translation' : '$prefix\n$arabic\n\n$translation';
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('আয়াত কপি কৰা হৈছে')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Verse copied')));
   }
 
   void _toggleBookmark(int verseNumber, Map<String, dynamic> verseData) {
@@ -396,9 +326,9 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
       language: _language,
       isTafseer: _isTafseer,
     );
-    final isBookmarked = settings.isBookmarked(_surahNumber, verseNumber, _language, _isTafseer);
+    final bool booked = settings.isBookmarked(_surahNumber, verseNumber, _language, _isTafseer);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(isBookmarked ? 'বুকমাৰ্ক কৰা হৈছে' : 'বুকমাৰ্ক আঁতৰোৱা হৈছে')),
+      SnackBar(content: Text(booked ? 'Bookmarked' : 'Bookmark removed')),
     );
   }
 
@@ -413,8 +343,8 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final settingsService = Provider.of<SettingsService>(context);
-    final fontScale = settingsService.fontScale;
+    final settings = Provider.of<SettingsService>(context);
+    final fontScale = settings.fontScale;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -423,7 +353,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(_surahName, style: TextStyle(fontSize: 18 * fontScale)),
-            Text('সূরা $_surahNumber • ${_verses.length} আয়াত',
+            Text('Surah $_surahNumber • ${_verses.length} verses',
                 style: TextStyle(fontSize: 12 * fontScale)),
           ],
         ),
@@ -439,132 +369,70 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         children: [
           if (_showSearchBar)
             Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _searchController,
-                    focusNode: _searchFocusNode,
-                    decoration: InputDecoration(
-                      hintText: 'Search by verse number (1, 2:255, 5-10) or text...',
-                      prefixIcon: _isSearching
-                          ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                          : const Icon(Icons.search),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(icon: const Icon(Icons.clear), onPressed: _clearSearch)
-                          : null,
-                      filled: true,
-                      fillColor: theme.scaffoldBackgroundColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.0),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                    ),
-                  ),
-                  if (_searchController.text.isNotEmpty && !_isSearching) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Text('${_filteredVerses.length} verses found',
-                            style: TextStyle(fontSize: 12 * fontScale, color: theme.colorScheme.onSurface.withOpacity(0.6))),
-                        const Spacer(),
-                        if (_filteredVerses.isNotEmpty)
-                          TextButton(
-                            onPressed: () => _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut),
-                            child: Text('Scroll to top', style: TextStyle(fontSize: 12 * fontScale, color: theme.colorScheme.primary)),
-                          ),
-                      ],
-                    ),
-                    Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      padding: const EdgeInsets.all(8.0),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.lightbulb_outline, size: 16 * fontScale, color: theme.colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text('Tip: Search with "verse", "surah:verse", or "start-end"',
-                                style: TextStyle(fontSize: 10 * fontScale, color: theme.colorScheme.primary)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: theme.cardColor, boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
+              ]),
+              child: TextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                decoration: InputDecoration(
+                  hintText: 'Search by verse number (1, 2:255, 5-10) or text...',
+                  prefixIcon: _isSearching
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.search),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(icon: const Icon(Icons.clear), onPressed: _clearSearch)
+                      : null,
+                  filled: true,
+                  fillColor: theme.scaffoldBackgroundColor,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
               ),
             ),
-
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : Consumer<SettingsService>(
-              builder: (context, settings, child) {
-                return Container(
-                  color: settings.backgroundColor,
-                  child: _filteredVerses.isEmpty && _showSearchBar && _searchController.text.isNotEmpty
-                      ? _buildNoResults(theme, fontScale)
-                      : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16.0),
-                    itemCount: _filteredVerses.length,
-                    itemBuilder: (context, index) {
-                      final verse = _filteredVerses[index];
-                      final verseNumber = (verse['aya'] as num?)?.toInt() ??
-                          (verse['id'] as num?)?.toInt() ??
-                          index + 1;
+                : Consumer<SettingsService>(builder: (context, settings, child) {
+              return Container(
+                color: settings.backgroundColor,
+                child: _filteredVerses.isEmpty && _showSearchBar && _searchController.text.isNotEmpty
+                    ? _buildNoResults(theme, fontScale)
+                    : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _filteredVerses.length,
+                  itemBuilder: (context, i) {
+                    final verse = _filteredVerses[i];
+                    final vn = (verse['aya'] as num?)?.toInt() ?? (verse['id'] as num?)?.toInt() ?? i + 1;
+                    final arabic = verse['arabic'] ?? verse['text'] ?? '';
+                    final translation = verse['translation'] ?? '';
+                    final transliteration = verse['transliteration'] ?? '';
+                    final tafseer = verse['tafseer'] ?? '';
+                    final footnotes = verse['footnotes'] ?? '';
 
-                      final arabic = verse['arabic'] ?? verse['text'] ?? '';
-                      final translation = verse['translation'] ?? '';
-                      final transliteration = verse['transliteration'] ?? '';
-                      final tafseer = verse['tafseer'] ?? '';
-                      final footnotes = verse['footnotes'] ?? '';
+                    final booked = settings.isBookmarked(_surahNumber, vn, _language, _isTafseer);
 
-                      final isBookmarked = settings.isBookmarked(
-                          _surahNumber, verseNumber, _language, _isTafseer);
-
-                      return VerseCard(
-                        surahNumber: _surahNumber,
-                        verseNumber: verseNumber,
-                        arabic: arabic,
-                        translation: translation,
-                        transliteration: transliteration,
-                        tafseer: tafseer,
-                        footnotes: footnotes,
-                        language: _language,
-                        isTafseer: _isTafseer,
-                        isBookmarked: isBookmarked,
-                        onShare: () => _shareVerse(verseNumber, arabic, translation),
-                        onCopy: () => _copyVerse(verseNumber, arabic, translation),
-                        onBookmark: () => _toggleBookmark(verseNumber, verse),
-                        fontScale: fontScale,
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
+                    return VerseCard(
+                      surahNumber: _surahNumber,
+                      verseNumber: vn,
+                      arabic: arabic,
+                      translation: translation,
+                      transliteration: transliteration,
+                      tafseer: tafseer,
+                      footnotes: footnotes,
+                      language: _language,
+                      isTafseer: _isTafseer,
+                      isBookmarked: booked,
+                      onShare: () => _shareVerse(vn, arabic, translation),
+                      onCopy: () => _copyVerse(vn, arabic, translation),
+                      onBookmark: () => _toggleBookmark(vn, verse),
+                      fontScale: fontScale,
+                    );
+                  },
+                ),
+              );
+            }),
           ),
         ],
       ),
@@ -574,18 +442,17 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   Widget _buildNoResults(ThemeData theme, double fontScale) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32.0),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.search_off, size: 64 * fontScale, color: theme.colorScheme.onSurface.withOpacity(0.3)),
             const SizedBox(height: 16),
             Text('No verses found',
-                style: TextStyle(fontSize: 18 * fontScale, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+                style: TextStyle(fontSize: 18 * fontScale, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text('Try searching with different keywords or verse numbers',
-                style: TextStyle(fontSize: 14 * fontScale, color: theme.colorScheme.onSurface.withOpacity(0.6)),
-                textAlign: TextAlign.center),
+                style: TextStyle(fontSize: 14 * fontScale), textAlign: TextAlign.center),
           ],
         ),
       ),

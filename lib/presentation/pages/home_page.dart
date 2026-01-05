@@ -127,7 +127,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
   static const List<Map<String, dynamic>> _primaryFeatures = [
     {'title': 'অসমীয়া কোৰআন', 'icon': 'assets/icons/quran_assamese.svg', 'route': '/surahList', 'params': {'language': 'assamese'}, 'emoji': '📖'},
     {'title': 'English Quran', 'icon': 'assets/icons/quran_english.svg', 'route': '/surahList', 'params': {'language': 'english'}, 'emoji': '📕'},
-    {'title': 'हिन्दी क़ुरान', 'icon': 'assets/icons/quran_hindi.svg', 'route': '/surahList', 'params': {'language': 'hindi'}, 'emoji': '📗'},
+    {'title': 'हिन्दी   क़ुरान', 'icon': 'assets/icons/quran_hindi.svg', 'route': '/surahList', 'params': {'language': 'hindi'}, 'emoji': '📗'},
     {'title': 'Arabic Quran', 'icon': 'assets/icons/quran_arabic.svg', 'route': '/surahList', 'params': {'language': 'arabic'}, 'emoji': '📘'},
     {'title': 'Bengali Quran', 'icon': 'assets/icons/quran_bengali.svg', 'route': '/surahList', 'params': {'language': 'bengali'}, 'emoji': '📙'},
     {'title': 'Quran Tafseer', 'icon': 'assets/icons/tafseer.svg', 'route': '/tafseerLanguageSelection', 'params': null, 'emoji': '📚'},

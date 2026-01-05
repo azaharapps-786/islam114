@@ -1,4 +1,3 @@
-// lib/core/services/settings_service.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -206,6 +205,7 @@ class SurahDisplaySettings {
   final bool showTransliteration;
   final bool showTafseer;
   final Map<String, bool> additionalTranslations;
+  final Map<String, bool> additionalTransliterations; // FIXED: Separate map for transliterations
   final Map<String, bool> additionalTafseers;
 
   const SurahDisplaySettings({
@@ -214,6 +214,7 @@ class SurahDisplaySettings {
     required this.showTransliteration,
     required this.showTafseer,
     required this.additionalTranslations,
+    required this.additionalTransliterations, // FIXED: Separate map for transliterations
     required this.additionalTafseers,
   });
 
@@ -223,6 +224,7 @@ class SurahDisplaySettings {
 
     // Create a map of default advanced translations/tafseers
     final Map<String, bool> defaultAdvancedTranslations = {};
+    final Map<String, bool> defaultAdvancedTransliterations = {}; // FIXED: Separate map for transliterations
     final Map<String, bool> defaultAdvancedTafseers = {};
 
     // Set defaults ONLY for English language
@@ -234,12 +236,13 @@ class SurahDisplaySettings {
     }
 
     return SurahDisplaySettings(
-      showArabic: true, // Always show Arabic by default
+      showArabic: isArabic, // FIXED: Only show Arabic by default for Arabic language
       showTranslation: !isArabic, // No primary translation for Arabic Quran
       showTransliteration: !isArabic, // No primary transliteration for Arabic Quran
       showTafseer: false,
       // Use the new maps for the advanced options
       additionalTranslations: defaultAdvancedTranslations,
+      additionalTransliterations: defaultAdvancedTransliterations, // FIXED: Separate map for transliterations
       additionalTafseers: defaultAdvancedTafseers,
     );
   }
@@ -250,6 +253,7 @@ class SurahDisplaySettings {
     bool? showTransliteration,
     bool? showTafseer,
     Map<String, bool>? additionalTranslations,
+    Map<String, bool>? additionalTransliterations, // FIXED: Separate map for transliterations
     Map<String, bool>? additionalTafseers,
   }) {
     return SurahDisplaySettings(
@@ -258,6 +262,7 @@ class SurahDisplaySettings {
       showTransliteration: showTransliteration ?? this.showTransliteration,
       showTafseer: showTafseer ?? this.showTafseer,
       additionalTranslations: additionalTranslations ?? this.additionalTranslations,
+      additionalTransliterations: additionalTransliterations ?? this.additionalTransliterations, // FIXED: Separate map for transliterations
       additionalTafseers: additionalTafseers ?? this.additionalTafseers,
     );
   }
@@ -269,6 +274,7 @@ class SurahDisplaySettings {
       'showTransliteration': showTransliteration,
       'showTafseer': showTafseer,
       'additionalTranslations': additionalTranslations,
+      'additionalTransliterations': additionalTransliterations, // FIXED: Separate map for transliterations
       'additionalTafseers': additionalTafseers,
     };
   }
@@ -280,6 +286,7 @@ class SurahDisplaySettings {
       showTransliteration: json['showTransliteration'] ?? true,
       showTafseer: json['showTafseer'] ?? false,
       additionalTranslations: Map<String, bool>.from(json['additionalTranslations'] ?? {}),
+      additionalTransliterations: Map<String, bool>.from(json['additionalTransliterations'] ?? {}), // FIXED: Separate map for transliterations
       additionalTafseers: Map<String, bool>.from(json['additionalTafseers'] ?? {}),
     );
   }
@@ -288,6 +295,7 @@ class SurahDisplaySettings {
   bool get hasVisibleContent {
     return showArabic || showTranslation || showTransliteration || showTafseer ||
         additionalTranslations.values.any((enabled) => enabled) ||
+        additionalTransliterations.values.any((enabled) => enabled) || // FIXED: Check transliterations too
         additionalTafseers.values.any((enabled) => enabled);
   }
 }

@@ -1,4 +1,3 @@
-// lib/presentation/widgets/verse_card.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -82,35 +81,56 @@ class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMix
 
     if (displaySettings == null) return;
 
-    final newTranslations = <String, String>{};
-    final enabledLanguages = displaySettings.additionalTranslations;
+    final Map<String, String> newTranslations = {};
 
-    for (final entry in enabledLanguages.entries) {
-      if (entry.value) {
-        final lang = entry.key;
-        try {
-          final String jsonString = await rootBundle.loadString('assets/data/quran_$lang.json');
-          final List<dynamic> jsonData = json.decode(jsonString);
+    for (final entry in displaySettings.additionalTranslations.entries) {
+      if (!entry.value) continue;
 
-          final verseData = jsonData.firstWhere(
-                (v) => (v['sura'] as num?)?.toInt() == widget.surahNumber &&
-                (v['aya'] as num?)?.toInt() == widget.verseNumber,
-            orElse: () => null,
-          );
+      final String lang = entry.key;
+      try {
+        final String jsonString = await rootBundle.loadString('assets/data/quran_$lang.json');
+        final dynamic rawJson = json.decode(jsonString);
 
-          if (verseData != null) {
-            newTranslations[lang] = verseData['translation'] ?? '';
+        String? verseText;
+
+        if (rawJson is List) {
+          // Flat format (English, Hindi, Assamese, etc.)
+          if (rawJson.isNotEmpty && (rawJson[0].containsKey('sura') || rawJson[0].containsKey('surah'))) {
+            final verseData = rawJson.firstWhere(
+                  (v) => ((v['sura'] ?? v['surah']) as num?)?.toInt() == widget.surahNumber &&
+                  (v['aya'] as num?)?.toInt() == widget.verseNumber,
+              orElse: () => null,
+            );
+            verseText = verseData?['translation'] ?? '';
           }
-        } catch (e) {
-          debugPrint('Error loading translation for $lang: $e');
+          // Nested format (Bengali)
+          else if (rawJson.isNotEmpty && rawJson[0].containsKey('verses')) {
+            final surahData = rawJson.firstWhere(
+                  (s) => (s['id'] as num?)?.toInt() == widget.surahNumber,
+              orElse: () => null,
+            );
+            if (surahData != null) {
+              final versesList = surahData['verses'] as List?;
+              final verseData = versesList?.firstWhere(
+                    (v) => (v['aya'] as num?)?.toInt() == widget.verseNumber,
+                orElse: () => null,
+              );
+              // FIXED: Bengali JSON might use 'text' instead of 'translation' field
+              verseText = verseData?['translation'] ?? verseData?['text'] ?? '';
+            }
+          }
         }
+
+        if (verseText != null && verseText.isNotEmpty) {
+          newTranslations[lang] = verseText;
+        }
+      } catch (e) {
+        debugPrint('Failed to load additional $lang translation: $e');
       }
     }
 
     if (mounted) {
-      setState(() {
-        _additionalTranslations = newTranslations;
-      });
+      setState(() => _additionalTranslations = newTranslations);
     }
   }
 

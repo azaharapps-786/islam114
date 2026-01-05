@@ -18,7 +18,7 @@ import 'presentation/pages/quran_dictionary_page.dart';
 import 'presentation/pages/islamic_calendar_page.dart';
 import 'presentation/pages/more_options_page.dart';
 import 'presentation/pages/bukhari_hadith_page.dart';
-import 'presentation/pages/qibla_page.dart';
+//import 'presentation/pages/qibla_page.dart';
 import 'presentation/pages/amal_namah_dashboard.dart'; // ← Correct import for the new dashboard
 
 // Global RouteObserver instance for app-wide navigation awareness.
@@ -149,7 +149,7 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
             '/calendar': (context) => const IslamicCalendarPage(),
             '/more': (context) => const MoreOptionsPage(),
             '/hadith': (context) => const BukhariHadithPage(),
-            '/qibla': (context) => const QiblaPage(),
+            //'/qibla': (context) => const QiblaPage(),
           },
           navigatorObservers: [routeObserver],
           onGenerateRoute: (settings) {
