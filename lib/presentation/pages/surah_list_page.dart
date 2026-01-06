@@ -86,7 +86,7 @@ class _SurahListPageState extends State<SurahListPage>
     super.dispose();
   }
 
-  // --- LOGIC METHODS (FIXES THE "UNDEFINED" ERRORS) ---
+  // --- LOGIC METHODS ---
 
   void _updateTitle() {
     String newTitle;
@@ -94,7 +94,7 @@ class _SurahListPageState extends State<SurahListPage>
       switch (_language) {
         case 'assamese': newTitle = 'অসমীয়া কোৰআন তাফসীর'; break;
         case 'english': newTitle = 'English Quran Tafseer'; break;
-        case 'hindi': newTitle = 'हिन्दी क़ুরআন তਫ਼সির'; break;
+        case 'hindi': newTitle = 'हिन्दी क़ुरआन तफ़सीर'; break;
         case 'bengali': newTitle = 'বাংলা কোরান তাফসীর'; break;
         default: newTitle = 'Quran Tafseer';
       }
@@ -102,8 +102,8 @@ class _SurahListPageState extends State<SurahListPage>
       switch (_language) {
         case 'assamese': newTitle = 'অসমীয়া কোৰআন'; break;
         case 'english': newTitle = 'English Quran'; break;
-        case 'hindi': newTitle = 'हिन्दी क़ुरআন'; break;
-        case 'bengali': newTitle = 'Bengali Quran'; break;
+        case 'hindi': newTitle = 'हिन्दी क़ुरआन'; break;
+        case 'bengali': newTitle = 'বাংলা কোরান'; break;
         default: newTitle = 'Quran';
       }
     }
@@ -173,117 +173,112 @@ class _SurahListPageState extends State<SurahListPage>
     final fontScale = Provider.of<SettingsService>(context).fontScale;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          _buildAmbientBackground(),
-          SafeArea(
-            child: Column(
-              children: [
-                _buildCustomHeader(context, fontScale),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                  child: _buildGlassSearchBar(fontScale),
-                ),
-                _buildSearchIndicators(fontScale),
-                Expanded(
-                  child: _isLoading
-                      ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
-                      : _filteredSurahs.isEmpty
-                      ? _buildEmptyState(fontScale)
-                      : _buildSurahList(fontScale),
-                ),
-              ],
-            ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFE8F5E9), // Very light green
+              Color(0xFFC8E6C9), // Light green
+              Color(0xFFA5D6A7), // Slightly deeper soft green
+              Color(0xFFDCEDC8), // Light lime-green accent at bottom
+            ],
+            stops: [0.0, 0.4, 0.8, 1.0],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAmbientBackground() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF0A1A12), Color(0xFF143A2C), Color(0xFF0A1A12)],
+        ),
+        child: Column(
+          children: [
+            _buildAppBar(fontScale),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: _buildSearchBar(fontScale),
+            ),
+            _buildSearchIndicators(fontScale),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)))
+                  : _filteredSurahs.isEmpty
+                  ? _buildEmptyState(fontScale)
+                  : _buildSurahList(fontScale),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildCustomHeader(BuildContext context, double fontScale) {
-    final emoji = _getEmojiForCurrentView();
-    final heroTag = 'hero-tag-$_title';
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-      child: Row(
-        children: [
-          IconButton(
+  Widget _buildAppBar(double fontScale) {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(kToolbarHeight + 24),
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF2E7D32), Color(0xFF388E3C)], // Rich green header
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
             onPressed: () => Navigator.pop(context),
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.1),
+          ),
+          title: Row(
+            children: [
+              Text(
+                _getEmojiForCurrentView(),
+                style: TextStyle(fontSize: 30 * fontScale),
               ),
-              child: const Icon(Icons.arrow_back_ios_new, size: 20, color: Colors.white),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Hero(
-            tag: heroTag,
-            child: Material(
-              type: MaterialType.transparency,
-              child: Text(emoji, style: TextStyle(fontSize: 28 * fontScale)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _title,
-              style: TextStyle(
-                fontSize: 20 * fontScale,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _title,
+                  style: TextStyle(
+                    fontSize: 21 * fontScale,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildGlassSearchBar(double fontScale) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.18),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.2),
+  Widget _buildSearchBar(double fontScale) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade400.withOpacity(0.5),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          child: TextField(
-            controller: _searchController,
-            style: TextStyle(fontSize: 16 * fontScale, color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Search surah...',
-              hintStyle: TextStyle(color: Colors.white54, fontSize: 16 * fontScale),
-              prefixIcon: Icon(Icons.search, color: Colors.greenAccent),
-              suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
-                  icon: const Icon(Icons.clear, color: Colors.white70),
-                  onPressed: _clearSearch)
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-            ),
-          ),
+        ],
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: TextStyle(fontSize: 16.5 * fontScale, color: Colors.grey.shade900),
+        decoration: InputDecoration(
+          hintText: 'Search surah by name or number...',
+          hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 16 * fontScale),
+          prefixIcon: Icon(Icons.search, color: const Color(0xFF2E7D32), size: 26),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+            icon: Icon(Icons.clear, color: Colors.grey.shade600),
+            onPressed: _clearSearch,
+          )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
         ),
       ),
     );
@@ -292,12 +287,16 @@ class _SurahListPageState extends State<SurahListPage>
   Widget _buildSearchIndicators(double fontScale) {
     if (_searchController.text.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 6),
       child: Row(
         children: [
           Text(
-            _isSearching ? 'Searching...' : '${_filteredSurahs.length} results found',
-            style: TextStyle(color: Colors.white70, fontSize: 13 * fontScale),
+            _isSearching ? 'Searching...' : '${_filteredSurahs.length} surahs found',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 13.5 * fontScale,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -309,11 +308,20 @@ class _SurahListPageState extends State<SurahListPage>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_off, size: 64, color: Colors.white.withOpacity(0.2)),
-          const SizedBox(height: 16),
+          Icon(Icons.search_off, size: 88, color: Colors.grey.shade500),
+          const SizedBox(height: 24),
           Text(
             'No surahs found',
-            style: TextStyle(fontSize: 18 * fontScale, color: Colors.white, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 22 * fontScale,
+              color: Colors.grey.shade800,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try a different search term',
+            style: TextStyle(fontSize: 15 * fontScale, color: Colors.grey.shade600),
           ),
         ],
       ),
@@ -321,25 +329,23 @@ class _SurahListPageState extends State<SurahListPage>
   }
 
   Widget _buildSurahList(double fontScale) {
-    return ListView.builder(
+    return ListView.separated(
       controller: _scrollController,
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       itemCount: _filteredSurahs.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final surah = _filteredSurahs[index];
         return FadeTransition(
           opacity: _fadeAnimation,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: SurahCard(
-              key: ValueKey(surah['number']),
-              number: surah['number'],
-              name: surah['name'],
-              language: _language,
-              isTafseer: _isTafseer,
-              fontScale: fontScale,
-            ),
+          child: SurahCard(
+            key: ValueKey(surah['number']),
+            number: surah['number'],
+            name: surah['name'],
+            language: _language,
+            isTafseer: _isTafseer,
+            fontScale: fontScale,
           ),
         );
       },

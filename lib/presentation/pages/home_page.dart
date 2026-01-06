@@ -102,20 +102,25 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
       context: context,
       barrierLabel: 'Tafseer Language Selection',
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.5),
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation1, animation2) => const TafseerLanguageDialog(),
-      transitionBuilder: (context, animation1, animation2, child) {
+      barrierColor: Colors.black.withOpacity(0.4),
+      transitionDuration: const Duration(milliseconds: 350),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return const TafseerLanguageDialog();
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        // Cupertino (iOS) style modal presentation: slide up from bottom with subtle fade and spring-like ease
+        const begin = Offset(0.0, 1.0);
+        const end = Offset.zero;
+        final tween = Tween(begin: begin, end: end).chain(
+          CurveTween(curve: Curves.easeOutBack), // Provides a gentle overshoot for a natural "pop" feel
+        );
+
+        final offsetAnimation = animation.drive(tween);
+
         return FadeTransition(
-          opacity: CurvedAnimation(
-            parent: animation1,
-            curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
-          ),
-          child: ScaleTransition(
-            scale: CurvedAnimation(
-              parent: animation1,
-              curve: const Interval(0.0, 1.0, curve: Curves.elasticOut),
-            ),
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          child: SlideTransition(
+            position: offsetAnimation,
             child: child,
           ),
         );

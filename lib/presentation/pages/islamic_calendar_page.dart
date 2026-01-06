@@ -52,7 +52,6 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
       final now = DateTime.now();
       final List<IslamicEvent> allEvents = [];
 
-      // Load 3 years of data for smooth scrolling
       for (int year = now.year - 1; year <= now.year + 1; year++) {
         final events = await IslamicEventProvider.getEventsForGregorianYear(year, method);
         allEvents.addAll(events);
@@ -87,6 +86,10 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
     });
   }
 
+  void _toggleCalendarView() {
+    setState(() => _isHijriView = !_isHijriView);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -100,7 +103,8 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
         actions: [
           IconButton(
             icon: Icon(_isHijriView ? Icons.calendar_month : Icons.mosque),
-            onPressed: () => setState(() => _isHijriView = !_isHijriView),
+            onPressed: _toggleCalendarView,
+            tooltip: _isHijriView ? 'Switch to Gregorian' : 'Switch to Hijri',
           ),
         ],
       ),
@@ -109,21 +113,41 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
           : CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // 1. DATE CARDS (Header)
+          // 1. DATE CARDS (Header) - Now tappable
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
-                  Expanded(child: _buildDateCard("Gregorian", DateFormat('dd MMM yyyy').format(_selected), theme.colorScheme.primary, !_isHijriView)),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _isHijriView = false),
+                      child: _buildDateCard(
+                        "Gregorian",
+                        DateFormat('dd MMM yyyy').format(_selected),
+                        theme.colorScheme.primary,
+                        !_isHijriView,
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildDateCard("Hijri", "${_hijriSelected.hDay} ${_hijriMonths[_hijriSelected.hMonth-1]}", theme.colorScheme.secondary, _isHijriView)),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _isHijriView = true),
+                      child: _buildDateCard(
+                        "Hijri",
+                        "${_hijriSelected.hDay} ${_hijriMonths[_hijriSelected.hMonth - 1]} ${_hijriSelected.hYear}",
+                        theme.colorScheme.secondary,
+                        _isHijriView,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
 
-          // 2. THE CALENDAR (Gregorian or Hijri)
+          // 2. THE CALENDAR
           SliverToBoxAdapter(
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -139,10 +163,12 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
 
           // 3. UPCOMING EVENTS
           if (_upcoming.isNotEmpty) ...[
-            SliverToBoxAdapter(child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-              child: Text('Upcoming Events', style: TextStyle(fontSize: 18 * fontScale, fontWeight: FontWeight.bold)),
-            )),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+                child: Text('Upcoming Events', style: TextStyle(fontSize: 18 * fontScale, fontWeight: FontWeight.bold)),
+              ),
+            ),
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 110,
@@ -157,16 +183,25 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
           ],
 
           // 4. SELECTED DAY EVENTS
-          SliverToBoxAdapter(child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-            child: Text('Events for Today', style: TextStyle(fontSize: 18 * fontScale, fontWeight: FontWeight.bold)),
-          )),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+              child: Text(
+                'Events on ${_isHijriView ? '${_hijriSelected.hDay} ${_hijriMonths[_hijriSelected.hMonth - 1]}' : DateFormat('dd MMM yyyy').format(_selected)}',
+                style: TextStyle(fontSize: 18 * fontScale, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
 
           _selectedEvents.isEmpty
-              ? const SliverToBoxAdapter(child: Center(child: Padding(
-            padding: EdgeInsets.all(32.0),
-            child: Text('No special events on this day'),
-          )))
+              ? const SliverToBoxAdapter(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(32.0),
+                child: Text('No special events on this day'),
+              ),
+            ),
+          )
               : SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(
@@ -186,18 +221,36 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
   // --- SUB-WIDGETS ---
 
   Widget _buildDateCard(String label, String value, Color color, bool active) {
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: active ? color : color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
+        boxShadow: active
+            ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: active ? Colors.white70 : color, fontSize: 12)),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(color: active ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(
+            label,
+            style: TextStyle(
+              color: active ? Colors.white70 : color,
+              fontSize: 13 * Provider.of<SettingsService>(context).fontScale,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: active ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.bold,
+              fontSize: 16 * Provider.of<SettingsService>(context).fontScale,
+            ),
+          ),
         ],
       ),
     );
@@ -223,35 +276,61 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
 
   Widget _buildHijriGrid(ThemeData theme, double fontScale) {
     final daysInMonth = _hijriFocused.getDaysInMonth(_hijriFocused.hYear, _hijriFocused.hMonth);
-
-    // FIX: Using instance method hijriToGregorian
     final firstDayGreg = _hijriFocused.hijriToGregorian(_hijriFocused.hYear, _hijriFocused.hMonth, 1);
-    final firstWeekday = firstDayGreg.weekday % 7;
+    final firstWeekday = firstDayGreg.weekday % 7; // Sunday = 0
 
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _hijriFocused.hMonth--)),
-            Text('${_hijriMonths[_hijriFocused.hMonth - 1]} ${_hijriFocused.hYear}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setState(() => _hijriFocused.hMonth++)),
+            IconButton(
+              icon: const Icon(Icons.chevron_left),
+              onPressed: () {
+                setState(() {
+                  _hijriFocused.hMonth--;
+                  if (_hijriFocused.hMonth < 1) {
+                    _hijriFocused.hMonth = 12;
+                    _hijriFocused.hYear--;
+                  }
+                });
+              },
+            ),
+            Text(
+              '${_hijriMonths[_hijriFocused.hMonth - 1]} ${_hijriFocused.hYear}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right),
+              onPressed: () {
+                setState(() {
+                  _hijriFocused.hMonth++;
+                  if (_hijriFocused.hMonth > 12) {
+                    _hijriFocused.hMonth = 1;
+                    _hijriFocused.hYear++;
+                  }
+                });
+              },
+            ),
           ],
         ),
+        const SizedBox(height: 8),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7),
           itemCount: daysInMonth + firstWeekday,
           itemBuilder: (context, i) {
-            if (i < firstWeekday) return const SizedBox();
+            if (i < firstWeekday) return const SizedBox.shrink();
+
             final day = i - firstWeekday + 1;
+            final isSelected = _hijriSelected.hDay == day &&
+                _hijriSelected.hMonth == _hijriFocused.hMonth &&
+                _hijriSelected.hYear == _hijriFocused.hYear;
+            final isToday = _hijriToday.hDay == day &&
+                _hijriToday.hMonth == _hijriFocused.hMonth &&
+                _hijriToday.hYear == _hijriFocused.hYear;
 
-            // Logic for markers/selection
-            final isSelected = _hijriSelected.hDay == day && _hijriSelected.hMonth == _hijriFocused.hMonth && _hijriSelected.hYear == _hijriFocused.hYear;
-            final isToday = _hijriToday.hDay == day && _hijriToday.hMonth == _hijriFocused.hMonth && _hijriToday.hYear == _hijriFocused.hYear;
-
-            // FIX: Using instance method hijriToGregorian
             final gregDate = _hijriFocused.hijriToGregorian(_hijriFocused.hYear, _hijriFocused.hMonth, day);
             final hasEvent = _events[DateTime.utc(gregDate.year, gregDate.month, gregDate.day)]?.isNotEmpty ?? false;
 
@@ -260,15 +339,36 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
               child: Container(
                 margin: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: isSelected ? theme.colorScheme.secondary : isToday ? theme.colorScheme.secondary.withOpacity(0.2) : null,
+                  color: isSelected
+                      ? theme.colorScheme.secondary
+                      : isToday
+                      ? theme.colorScheme.secondary.withOpacity(0.2)
+                      : Colors.transparent,
                   shape: BoxShape.circle,
                 ),
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    Text('$day', style: TextStyle(color: isSelected ? Colors.white : null, fontWeight: isToday ? FontWeight.bold : FontWeight.normal)),
+                    Text(
+                      '$day',
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : null,
+                        fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 14 * fontScale,
+                      ),
+                    ),
                     if (hasEvent)
-                      Positioned(bottom: 6, child: Container(width: 4, height: 4, decoration: BoxDecoration(color: isSelected ? Colors.white70 : theme.colorScheme.secondary, shape: BoxShape.circle))),
+                      Positioned(
+                        bottom: 6,
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: isSelected ? Colors.white70 : theme.colorScheme.secondary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -284,13 +384,25 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
       width: 150,
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black12)),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black12),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(event.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+          Text(
+            event.title,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           const Spacer(),
-          Text(DateFormat('MMM dd').format(event.gregorianDate), style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            DateFormat('MMM dd').format(event.gregorianDate),
+            style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
@@ -302,7 +414,10 @@ class _IslamicCalendarPageState extends State<IslamicCalendarPage> with TickerPr
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.black12)),
       child: ListTile(
-        leading: CircleAvatar(backgroundColor: theme.colorScheme.primary.withOpacity(0.1), child: Icon(Icons.event_available, color: theme.colorScheme.primary, size: 20)),
+        leading: CircleAvatar(
+          backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+          child: Icon(Icons.event_available, color: theme.colorScheme.primary, size: 20),
+        ),
         title: Text(event.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         subtitle: Text(event.hijriDate.formattedDate, style: const TextStyle(fontSize: 12)),
         trailing: event.isImportant ? const Icon(Icons.star, color: Colors.amber, size: 20) : null,

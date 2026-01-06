@@ -30,13 +30,14 @@ dependencies:
   shared_preferences: ^2.2.2
 
   # --- LOCATION & SENSORS ---
-  # REMOVED flutter_qiblah
-  # Using flutter_compass directly for raw sensor data
-  flutter_compass: ^0.8.0
+  # These are the correct dependencies for the QiblaPage
   geolocator: ^10.0.0
   geocoding: ^2.1.1
   permission_handler: ^11.3.1
   sensors_plus: ^5.0.1
+
+
+  app_settings: ^5.1.1
 
   # --- UI & ANIMATION ---
   flutter_svg: ^2.0.9

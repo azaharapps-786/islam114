@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:haptic_feedback/haptic_feedback.dart';
 
@@ -31,7 +32,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
 
     const stagger = 0.08;
 
-    // 7 cards including Amal Namah
     _cardFadeAnimations = List.generate(7, (index) {
       final begin = index * stagger;
       final end = math.min(1.0, 0.85 + (index * stagger));
@@ -74,19 +74,50 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
     super.dispose();
   }
 
+  // Updated list with improved icons
   final List<Map<String, dynamic>> _moreOptions = [
-    {'title': 'Rabbana Duas', 'icon': Icons.menu_book_outlined, 'color': Colors.green, 'route': '/rabbanaDuas'},
-    {'title': 'Darood', 'icon': Icons.favorite_border, 'color': Colors.red, 'route': '/daroodIbrahim'},
-    {'title': 'Niyat', 'icon': Icons.mosque_outlined, 'color': Colors.blue, 'route': '/niyat'},
-    {'title': 'Library', 'icon': Icons.auto_stories, 'color': Colors.purple, 'route': '/library'},
-    {'title': 'Quran & Science', 'icon': Icons.science_outlined, 'color': Colors.teal, 'route': '/quranScience'},
-    {'title': '99 Names', 'icon': Icons.star_border, 'color': Colors.amber, 'route': '/allahNames'},
+    {
+      'title': 'Rabbana Duas',
+      'icon': Icons.menu_book_rounded,
+      'color': Colors.green,
+      'route': '/rabbanaDuas'
+    },
+    {
+      'title': 'Darood',
+      'icon': Icons.favorite_rounded,
+      'color': Colors.redAccent,
+      'route': '/daroodIbrahim'
+    },
+    {
+      'title': 'Niyat',
+      'icon': Icons.mosque_rounded,
+      'color': Colors.blueAccent,
+      'route': '/niyat'
+    },
+    {
+      'title': 'Library',
+      'icon': Icons.library_books_rounded,
+      'color': Colors.purpleAccent,
+      'route': '/library'
+    },
+    {
+      'title': 'Quran & Science',
+      'icon': Icons.biotech_rounded,
+      'color': Colors.teal,
+      'route': '/quranScience'
+    },
+    {
+      'title': '99 Names',
+      'icon': Icons.auto_awesome_rounded,
+      'color': Colors.amber,
+      'route': '/allahNames'
+    },
     {
       'title': 'Amal Namah',
-      'icon': Icons.book_outlined,
+      'icon': Icons.book_rounded,
       'color': Colors.orange[700],
       'route': '/amalNamah',
-      'skipLanguageDialog': true, // ← This tells the app to skip the dialog for this card
+      'skipLanguageDialog': true,
     },
   ];
 
@@ -125,31 +156,61 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
     final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: Colors.green[50],
-      appBar: AppBar(
-        title: Text(
-          'More Options',
-          style: TextStyle(
-            fontSize: (18 * fontScale).clamp(14.0, 22.0),
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+      // Applied the same elegant green gradient background as the HomePage
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF0A4D4D), // Deep teal-green
+              Color(0xFF0E7A6E), // Rich emerald
+              Color(0xFF1A9C8A), // Medium green
+              Color(0xFFE8F5E9), // Very light green base
+            ],
+            stops: [0.0, 0.3, 0.7, 1.0],
           ),
         ),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: Colors.white,
-        elevation: 2,
-        centerTitle: true,
-        shadowColor: Colors.black.withOpacity(0.2),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
+        child: SafeArea(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 12),
-              _buildFeatureGrid(fontScale, theme, screenWidth),
-              const SizedBox(height: 32),
+              // AppBar with matching primary color
+              AppBar(
+                title: Text(
+                  'More Options',
+                  style: TextStyle(
+                    fontSize: (18 * fontScale).clamp(14.0, 22.0),
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                centerTitle: true,
+                flexibleSpace: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF0A4D4D),
+                        const Color(0xFF0E7A6E).withOpacity(0.9),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 12),
+                      _buildFeatureGrid(fontScale, theme, screenWidth),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -192,11 +253,9 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
                         color: option['color'],
                         fontScale: fontScale,
                         onTap: () {
-                          // Check if this card should skip the language dialog
                           final bool skipDialog = option['skipLanguageDialog'] == true;
 
                           if (skipDialog) {
-                            // Direct navigation for Amal Namah (English only)
                             Navigator.pushNamed(
                               context,
                               option['route'],
@@ -206,7 +265,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
                               },
                             );
                           } else {
-                            // Show language dialog for all other features
                             _showLanguageSelectionDialog(
                               context,
                               option['route'],

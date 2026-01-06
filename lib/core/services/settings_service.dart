@@ -28,7 +28,6 @@ class SettingsService with ChangeNotifier {
 
   Future<void> loadSettings() async {
     _prefs = await SharedPreferences.getInstance();
-    final themeIndex = _prefs.getInt(AppConstants.themeKey) ?? 1;
     _themeMode = ThemeMode.light;
     _fontScale = _prefs.getDouble(AppConstants.fontScaleKey) ?? 1.0;
 
@@ -57,6 +56,13 @@ class SettingsService with ChangeNotifier {
 
     notifyListeners();
   }
+
+  // --- ADDED METHOD TO FIX VERSECARD ERROR ---
+  SurahDisplaySettings getSurahDisplaySettings(String language, bool isTafseer) {
+    // Returns existing settings or defaults if language isn't found
+    return _surahDisplaySettings[language] ?? SurahDisplaySettings.defaultFor(language);
+  }
+  // -------------------------------------------
 
   Future<void> updateThemeMode(ThemeMode newThemeMode) async {
     _themeMode = newThemeMode;
@@ -93,7 +99,6 @@ class SettingsService with ChangeNotifier {
     notifyListeners();
   }
 
-  // Initialize display settings
   void _initializeDisplaySettings() {
     final languages = ['english', 'assamese', 'hindi', 'bengali', 'arabic'];
     for (final language in languages) {
@@ -101,7 +106,6 @@ class SettingsService with ChangeNotifier {
     }
   }
 
-  // Load display settings from preferences
   Future<void> _loadDisplaySettings() async {
     final languages = ['english', 'assamese', 'hindi', 'bengali', 'arabic'];
 
@@ -112,14 +116,12 @@ class SettingsService with ChangeNotifier {
           final Map<String, dynamic> settingsMap = json.decode(settingsJson);
           _surahDisplaySettings[language] = SurahDisplaySettings.fromJson(settingsMap);
         } catch (e) {
-          // If loading fails, keep the default settings that were just initialized
-          print('Error loading display settings for $language: $e');
+          debugPrint('Error loading display settings for $language: $e');
         }
       }
     }
   }
 
-  // Load bookmarked verses from preferences
   Future<void> _loadBookmarkedVerses() async {
     final bookmarksJson = _prefs.getString('bookmarked_verses');
     if (bookmarksJson != null) {
@@ -127,15 +129,13 @@ class SettingsService with ChangeNotifier {
         final List<dynamic> bookmarksList = json.decode(bookmarksJson);
         _bookmarkedVerses = bookmarksList.map((item) => Map<String, dynamic>.from(item)).toList();
       } catch (e) {
-        print('Error loading bookmarked verses: $e');
+        debugPrint('Error loading bookmarked verses: $e');
         _bookmarkedVerses = [];
       }
     }
   }
 
-  // Centralized saving logic
   Future<void> _saveSettings() async {
-    // Save display settings
     for (final entry in _surahDisplaySettings.entries) {
       await _prefs.setString(
         'surah_display_settings_${entry.key}',
@@ -143,21 +143,18 @@ class SettingsService with ChangeNotifier {
       );
     }
 
-    // Save bookmarked verses
     await _prefs.setString(
       'bookmarked_verses',
       json.encode(_bookmarkedVerses),
     );
   }
 
-  // Update display settings for a language
   void updateSurahDisplaySettings(String language, SurahDisplaySettings settings) {
     _surahDisplaySettings[language] = settings;
     _saveSettings();
     notifyListeners();
   }
 
-  // FIXED: Bookmark management - Check state BEFORE mutating to ensure symmetric toggle
   void toggleBookmark({
     required int surahNumber,
     required int verseNumber,
@@ -169,10 +166,8 @@ class SettingsService with ChangeNotifier {
     final wasBookmarked = isBookmarked(surahNumber, verseNumber, language, isTafseer);
 
     if (wasBookmarked) {
-      // Remove existing bookmark
       _bookmarkedVerses.removeWhere((verse) => verse['key'] == bookmarkKey);
     } else {
-      // Add new bookmark
       _bookmarkedVerses.add({
         'key': bookmarkKey,
         'surahNumber': surahNumber,
@@ -198,14 +193,13 @@ class SettingsService with ChangeNotifier {
   }
 }
 
-// SurahDisplaySettings class - now only defined here
 class SurahDisplaySettings {
   final bool showArabic;
   final bool showTranslation;
   final bool showTransliteration;
   final bool showTafseer;
   final Map<String, bool> additionalTranslations;
-  final Map<String, bool> additionalTransliterations; // FIXED: Separate map for transliterations
+  final Map<String, bool> additionalTransliterations;
   final Map<String, bool> additionalTafseers;
 
   const SurahDisplaySettings({
@@ -214,7 +208,7 @@ class SurahDisplaySettings {
     required this.showTransliteration,
     required this.showTafseer,
     required this.additionalTranslations,
-    required this.additionalTransliterations, // FIXED: Separate map for transliterations
+    required this.additionalTransliterations,
     required this.additionalTafseers,
   });
 
@@ -222,28 +216,20 @@ class SurahDisplaySettings {
     final isArabic = language == 'arabic';
     final isEnglish = language == 'english';
 
-    // Create a map of default advanced translations/tafseers
     final Map<String, bool> defaultAdvancedTranslations = {};
-    final Map<String, bool> defaultAdvancedTransliterations = {}; // FIXED: Separate map for transliterations
-    final Map<String, bool> defaultAdvancedTafseers = {};
-
-    // Set defaults ONLY for English language
     if (isEnglish) {
-      // For English, enable Assamese and Hindi by default
       defaultAdvancedTranslations['assamese'] = true;
       defaultAdvancedTranslations['hindi'] = true;
-      // All other languages will remain false by default
     }
 
     return SurahDisplaySettings(
-      showArabic: isArabic, // FIXED: Only show Arabic by default for Arabic language
-      showTranslation: !isArabic, // No primary translation for Arabic Quran
-      showTransliteration: !isArabic, // No primary transliteration for Arabic Quran
+      showArabic: isArabic,
+      showTranslation: !isArabic,
+      showTransliteration: !isArabic,
       showTafseer: false,
-      // Use the new maps for the advanced options
       additionalTranslations: defaultAdvancedTranslations,
-      additionalTransliterations: defaultAdvancedTransliterations, // FIXED: Separate map for transliterations
-      additionalTafseers: defaultAdvancedTafseers,
+      additionalTransliterations: {},
+      additionalTafseers: {},
     );
   }
 
@@ -253,7 +239,7 @@ class SurahDisplaySettings {
     bool? showTransliteration,
     bool? showTafseer,
     Map<String, bool>? additionalTranslations,
-    Map<String, bool>? additionalTransliterations, // FIXED: Separate map for transliterations
+    Map<String, bool>? additionalTransliterations,
     Map<String, bool>? additionalTafseers,
   }) {
     return SurahDisplaySettings(
@@ -262,7 +248,7 @@ class SurahDisplaySettings {
       showTransliteration: showTransliteration ?? this.showTransliteration,
       showTafseer: showTafseer ?? this.showTafseer,
       additionalTranslations: additionalTranslations ?? this.additionalTranslations,
-      additionalTransliterations: additionalTransliterations ?? this.additionalTransliterations, // FIXED: Separate map for transliterations
+      additionalTransliterations: additionalTransliterations ?? this.additionalTransliterations,
       additionalTafseers: additionalTafseers ?? this.additionalTafseers,
     );
   }
@@ -274,7 +260,7 @@ class SurahDisplaySettings {
       'showTransliteration': showTransliteration,
       'showTafseer': showTafseer,
       'additionalTranslations': additionalTranslations,
-      'additionalTransliterations': additionalTransliterations, // FIXED: Separate map for transliterations
+      'additionalTransliterations': additionalTransliterations,
       'additionalTafseers': additionalTafseers,
     };
   }
@@ -286,16 +272,15 @@ class SurahDisplaySettings {
       showTransliteration: json['showTransliteration'] ?? true,
       showTafseer: json['showTafseer'] ?? false,
       additionalTranslations: Map<String, bool>.from(json['additionalTranslations'] ?? {}),
-      additionalTransliterations: Map<String, bool>.from(json['additionalTransliterations'] ?? {}), // FIXED: Separate map for transliterations
+      additionalTransliterations: Map<String, bool>.from(json['additionalTransliterations'] ?? {}),
       additionalTafseers: Map<String, bool>.from(json['additionalTafseers'] ?? {}),
     );
   }
 
-  // Check if at least one display option is enabled
   bool get hasVisibleContent {
     return showArabic || showTranslation || showTransliteration || showTafseer ||
         additionalTranslations.values.any((enabled) => enabled) ||
-        additionalTransliterations.values.any((enabled) => enabled) || // FIXED: Check transliterations too
+        additionalTransliterations.values.any((enabled) => enabled) ||
         additionalTafseers.values.any((enabled) => enabled);
   }
 }

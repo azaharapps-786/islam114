@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
+    <!-- This permission is recommended for Android 12 (API 31) and above for sensor access -->
+    <uses-permission android:name="android.permission.ACCESS_MOTION_SENSORS" />
+
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
@@ -38,8 +41,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
-        <!-- REMOVED THE SERVICE BLOCK HERE -->
     </application>
 
     <queries>
