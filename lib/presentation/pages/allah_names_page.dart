@@ -146,7 +146,7 @@ class _AllahNamesPageState extends State<AllahNamesPage> with SingleTickerProvid
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F7F0), // Clean light background
+      backgroundColor: const Color(0xDDD0F7F0), // Clean light background
       appBar: AppBar(
         elevation: 0,
         backgroundColor: const Color(0xFF0A4D4D),

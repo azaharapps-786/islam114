@@ -21,6 +21,8 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
   late List<Animation<double>> _cardScaleAnimations;
   late List<Animation<double>> _cardBounceAnimations;
 
+  String _selectedLanguage = 'english'; // default
+
   @override
   void initState() {
     super.initState();
@@ -74,7 +76,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
     super.dispose();
   }
 
-  // Updated list with improved icons
   final List<Map<String, dynamic>> _moreOptions = [
     {
       'title': 'Rabbana Duas',
@@ -86,7 +87,7 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
       'title': 'Darood',
       'icon': Icons.favorite_rounded,
       'color': Colors.redAccent,
-      'route': '/daroodIbrahim'
+      'route': '/darood',
     },
     {
       'title': 'Niyat',
@@ -121,31 +122,46 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
     },
   ];
 
-  void _showLanguageSelectionDialog(BuildContext context, String route, String title) {
-    showGeneralDialog(
+  void _showLanguageSelectionDialog(BuildContext context) {
+    showDialog(
       context: context,
-      barrierLabel: 'Language Selection',
-      barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.5),
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation1, animation2) {
-        return _MoreOptionsLanguageDialog(route: route, title: title);
-      },
-      transitionBuilder: (context, animation1, animation2, child) {
-        return FadeTransition(
-          opacity: CurvedAnimation(
-            parent: animation1,
-            curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Select Language'),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...['english', 'assamese', 'hindi', 'bengali'].map((lang) {
+              final isSelected = lang == _selectedLanguage;
+              return ListTile(
+                dense: true,
+                leading: Icon(
+                  isSelected ? Icons.check_circle : Icons.translate,
+                  color: isSelected ? Theme.of(context).colorScheme.primary : null,
+                ),
+                title: Text(
+                  lang[0].toUpperCase() + lang.substring(1),
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                onTap: () {
+                  Haptics.vibrate(HapticsType.light);
+                  setState(() => _selectedLanguage = lang);
+                  Navigator.pop(context);
+                },
+              );
+            }),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
-          child: ScaleTransition(
-            scale: CurvedAnimation(
-              parent: animation1,
-              curve: const Interval(0.0, 1.0, curve: Curves.elasticOut),
-            ),
-            child: child,
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -156,58 +172,85 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
     final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      // Applied the same elegant green gradient background as the HomePage
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF0A4D4D), // Deep teal-green
-              Color(0xFF0E7A6E), // Rich emerald
-              Color(0xFF1A9C8A), // Medium green
-              Color(0xFFE8F5E9), // Very light green base
+              Color(0xFF0A4D4D),
+              Color(0xFF0E7A6E),
+              Color(0xFF1A9C8A),
+              Color(0xFFE8F5E9),
             ],
             stops: [0.0, 0.3, 0.7, 1.0],
           ),
         ),
         child: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              // AppBar with matching primary color
-              AppBar(
-                title: Text(
-                  'More Options',
-                  style: TextStyle(
-                    fontSize: (18 * fontScale).clamp(14.0, 22.0),
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                centerTitle: true,
-                flexibleSpace: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        const Color(0xFF0A4D4D),
-                        const Color(0xFF0E7A6E).withOpacity(0.9),
-                      ],
+              Column(
+                children: [
+                  AppBar(
+                    title: Text(
+                      'More Options',
+                      style: TextStyle(
+                        fontSize: (18 * fontScale).clamp(14.0, 22.0),
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    centerTitle: true,
+                    flexibleSpace: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFF0A4D4D),
+                            const Color(0xFF0E7A6E).withOpacity(0.9),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 12),
+                          _buildFeatureGrid(fontScale, theme, screenWidth),
+                          const SizedBox(height: 32),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 12),
-                      _buildFeatureGrid(fontScale, theme, screenWidth),
-                      const SizedBox(height: 32),
-                    ],
+
+              Positioned(
+                right: 24,
+                bottom: 32,
+                child: FloatingActionButton.extended(
+                  onPressed: () {
+                    Haptics.vibrate(HapticsType.light);
+                    _showLanguageSelectionDialog(context);
+                  },
+                  label: Text(
+                    'Language: ${_selectedLanguage[0].toUpperCase() + _selectedLanguage.substring(1)}',
+                    style: TextStyle(
+                      fontSize: (14 * fontScale).clamp(12.0, 16.0),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  icon: const Icon(Icons.translate_rounded, size: 20),
+                  backgroundColor: Colors.white.withOpacity(0.92),
+                  foregroundColor: const Color(0xFF0A4D4D),
+                  elevation: 6,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(32),
                   ),
                 ),
               ),
@@ -265,10 +308,13 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
                               },
                             );
                           } else {
-                            _showLanguageSelectionDialog(
+                            Navigator.pushNamed(
                               context,
                               option['route'],
-                              option['title'],
+                              arguments: {
+                                'language': _selectedLanguage,
+                                'title': option['title'],
+                              },
                             );
                           }
                         },
@@ -278,155 +324,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
                 );
               },
             );
-          },
-        );
-      },
-    );
-  }
-}
-
-// Language Selection Dialog — unchanged
-class _MoreOptionsLanguageDialog extends StatelessWidget {
-  final String route;
-  final String title;
-
-  const _MoreOptionsLanguageDialog({
-    required this.route,
-    required this.title,
-  });
-
-  final List<String> availableLanguages = const [
-    'English',
-    'Assamese',
-    'Hindi',
-    'Bengali',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final double fontScale = Provider.of<SettingsService>(context, listen: false).fontScale;
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Material(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(28.0),
-        elevation: 10,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 16.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 320,
-              maxHeight: 400,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Select Language',
-                  textAlign: TextAlign.start,
-                  style: TextStyle(
-                    fontSize: (20 * fontScale).clamp(18.0, 24.0),
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: availableLanguages.length,
-                    separatorBuilder: (context, index) => Divider(
-                      height: 1,
-                      color: theme.colorScheme.outlineVariant.withOpacity(0.3),
-                      indent: 16,
-                      endIndent: 16,
-                    ),
-                    itemBuilder: (context, index) {
-                      final language = availableLanguages[index];
-                      return _buildLanguageTile(context, language, fontScale, theme);
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        Haptics.vibrate(HapticsType.light);
-                        Navigator.of(context).pop();
-                      },
-                      child: Text(
-                        'Cancel',
-                        style: TextStyle(
-                          fontSize: (15 * fontScale).clamp(13.0, 17.0),
-                          fontWeight: FontWeight.w500,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: () {
-                        Haptics.vibrate(HapticsType.medium);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('More languages coming soon')),
-                        );
-                      },
-                      child: Text(
-                        'More Languages',
-                        style: TextStyle(
-                          fontSize: (15 * fontScale).clamp(13.0, 17.0),
-                          fontWeight: FontWeight.w500,
-                          color: theme.colorScheme.secondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLanguageTile(
-      BuildContext context, String language, double fontScale, ThemeData theme) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
-      leading: Icon(Icons.translate, color: theme.colorScheme.primary),
-      title: Text(
-        language,
-        style: TextStyle(
-          fontSize: (16 * fontScale).clamp(14.0, 18.0),
-          fontWeight: FontWeight.w500,
-          color: theme.colorScheme.onSurface,
-        ),
-      ),
-      trailing: Icon(
-        Icons.arrow_forward_ios,
-        color: theme.colorScheme.primary.withOpacity(0.5),
-        size: 14,
-      ),
-      onTap: () async {
-        if (await Haptics.canVibrate()) {
-          Haptics.vibrate(HapticsType.light);
-        }
-
-        Navigator.of(context).pop();
-        Navigator.pushNamed(
-          context,
-          route,
-          arguments: {
-            'language': language.toLowerCase(),
-            'title': title,
           },
         );
       },

@@ -1,5 +1,5 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:islam114/presentation/pages/niyat_list_page.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 
@@ -18,10 +18,11 @@ import 'presentation/pages/quran_dictionary_page.dart';
 import 'presentation/pages/islamic_calendar_page.dart';
 import 'presentation/pages/more_options_page.dart';
 import 'presentation/pages/bukhari_hadith_page.dart';
-import 'presentation/pages/qibla_page.dart'; // ← IMPORT THE NEW QIBLA PAGE
+import 'presentation/pages/qibla_page.dart';
 import 'presentation/pages/amal_namah_dashboard.dart';
+import 'presentation/pages/darood_page.dart';
+import 'presentation/pages/allah_names_page.dart'; // ← Make sure this import exists!
 
-// Global RouteObserver instance for app-wide navigation awareness.
 final RouteObserver<PageRoute<dynamic>> routeObserver = RouteObserver<PageRoute<dynamic>>();
 
 void main() async {
@@ -149,20 +150,42 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
             '/calendar': (context) => const IslamicCalendarPage(),
             '/more': (context) => const MoreOptionsPage(),
             '/hadith': (context) => const BukhariHadithPage(),
-            '/qibla': (context) => const QiblaPage(), // ← ROUTE TO THE NEW QIBLA PAGE
+            '/qibla': (context) => const QiblaPage(),
+            '/niyat': (context) => const NiyatListPage(),
+            // '/darood' and '/allahNames' are intentionally NOT here → handled by onGenerateRoute
           },
           navigatorObservers: [routeObserver],
           onGenerateRoute: (settings) {
             if (settings.name != null) {
-              if (settings.name == '/rabbanaDuas' ||
-                  settings.name == '/daroodIbrahim' ||
-                  settings.name == '/niyat' ||
-                  settings.name == '/library' ||
-                  settings.name == '/quranScience' ||
-                  settings.name == '/allahNames') {
+              // Handle Darood with language
+              if (settings.name == '/darood') {
                 final args = settings.arguments as Map<String, dynamic>?;
-                final language = args?['language'] ?? 'english';
-                final title = args?['title'] ?? 'Islamic Content';
+                final language = args?['language'] as String? ?? 'english';
+
+                return MaterialPageRoute(
+                  builder: (context) => DaroodPage(language: language),
+                );
+              }
+
+              // Handle REAL 99 Names page (AllahNamesPage)
+              if (settings.name == '/allahNames') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                final language = args?['language'] as String? ?? 'english';
+
+                return MaterialPageRoute(
+                  builder: (context) => const AllahNamesPage(), // Now uses your real page!
+                  // If you add language parameter later:
+                  // builder: (context) => AllahNamesPage(language: language),
+                );
+              }
+
+              // Handle other placeholder pages (Rabbana Duas, Library, Quran & Science)
+              if (settings.name == '/rabbanaDuas' ||
+                  settings.name == '/library' ||
+                  settings.name == '/quranScience') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                final language = args?['language'] as String? ?? 'english';
+                final title = args?['title'] as String? ?? 'Islamic Content';
 
                 return MaterialPageRoute(
                   builder: (context) => PlaceholderPage(
@@ -172,11 +195,11 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
                 );
               }
 
-              // Amal Namah – now opens the new Dashboard
+              // Amal Namah
               if (settings.name == '/amalNamah') {
                 final args = settings.arguments as Map<String, dynamic>?;
-                final language = args?['language'] ?? 'english';
-                final title = args?['title'] ?? 'Amal Namah';
+                final language = args?['language'] as String? ?? 'english';
+                final title = args?['title'] as String? ?? 'Amal Namah';
 
                 return MaterialPageRoute(
                   builder: (context) => AmalNamahDashboard(
@@ -194,7 +217,10 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
   }
 }
 
-// SplashScreen – restored exactly as in your original code
+// ──────────────────────────────────────────────────────────────────────────────
+// SplashScreen & PlaceholderPage (unchanged)
+// ──────────────────────────────────────────────────────────────────────────────
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -345,7 +371,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 }
 
-// PlaceholderPage – restored exactly as in your original code
 class PlaceholderPage extends StatelessWidget {
   final String title;
   final String language;
