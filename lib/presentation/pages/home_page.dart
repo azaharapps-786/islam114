@@ -108,11 +108,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
         return const TafseerLanguageDialog();
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        // Cupertino (iOS) style modal presentation: slide up from bottom with subtle fade and spring-like ease
         const begin = Offset(0.0, 1.0);
         const end = Offset.zero;
         final tween = Tween(begin: begin, end: end).chain(
-          CurveTween(curve: Curves.easeOutBack), // Provides a gentle overshoot for a natural "pop" feel
+          CurveTween(curve: Curves.easeOutBack),
         );
 
         final offsetAnimation = animation.drive(tween);
@@ -128,11 +127,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     );
   }
 
-  // Static constant data (unchanged)
+  // Static constant data - RESTORED to original (About Us removed from grid)
   static const List<Map<String, dynamic>> _primaryFeatures = [
     {'title': 'অসমীয়া কোৰআন', 'icon': 'assets/icons/quran_assamese.svg', 'route': '/surahList', 'params': {'language': 'assamese'}, 'emoji': '📖'},
     {'title': 'English Quran', 'icon': 'assets/icons/quran_english.svg', 'route': '/surahList', 'params': {'language': 'english'}, 'emoji': '📕'},
-    {'title': 'हिन्दी   क़ुरान', 'icon': 'assets/icons/quran_hindi.svg', 'route': '/surahList', 'params': {'language': 'hindi'}, 'emoji': '📗'},
+    {'title': 'हिन्दी   क़ুরান', 'icon': 'assets/icons/quran_hindi.svg', 'route': '/surahList', 'params': {'language': 'hindi'}, 'emoji': '📗'},
     {'title': 'Arabic Quran', 'icon': 'assets/icons/quran_arabic.svg', 'route': '/surahList', 'params': {'language': 'arabic'}, 'emoji': '📘'},
     {'title': 'Bengali Quran', 'icon': 'assets/icons/quran_bengali.svg', 'route': '/surahList', 'params': {'language': 'bengali'}, 'emoji': '📙'},
     {'title': 'Quran Tafseer', 'icon': 'assets/icons/tafseer.svg', 'route': '/tafseerLanguageSelection', 'params': null, 'emoji': '📚'},
@@ -159,7 +158,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     final headerPadding = isSmallScreen ? 12.0 : 16.0;
 
     return Scaffold(
-      body: SafeArea( // Revert back to using SafeArea here
+      body: SafeArea(
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -260,9 +259,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                 ),
               ),
 
-              // Title 1: HOLY QURAN Dynamic Island Header (Vertical)
               SliverPadding(
-                padding: const EdgeInsets.only(top: 16, bottom: 12), // Horizontal padding handled inside the widget
+                padding: const EdgeInsets.only(top: 16, bottom: 12),
                 sliver: SliverToBoxAdapter(
                   child: DynamicSectionHeader(
                     title: 'Holy Quran',
@@ -271,12 +269,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                 ),
               ),
 
-              // Feature Grid 1
               _buildSliverFeatureGrid(_primaryFeatures, 3, fontScale, theme),
 
-              // Title 2: Tools & More (Horizontal Dynamic Island)
               SliverPadding(
-                // REMOVED explicit horizontal padding (left: 16, right: 16) as DynamicHorizontalHeader has internal padding/margin
                 padding: const EdgeInsets.only(top: 32, bottom: 12),
                 sliver: SliverToBoxAdapter(
                   child: DynamicHorizontalHeader(
@@ -287,10 +282,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                 ),
               ),
 
-              // Feature Grid 2
               _buildSliverFeatureGrid(_secondaryFeatures, 3, fontScale, theme),
 
-              // Bottom padding
               const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
             ],
           ),
@@ -299,8 +292,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
       bottomNavigationBar: const HomeBottomBar(),
     );
   }
-
-  // DELETED: _buildSectionTitle method has been removed as it is now replaced by DynamicHorizontalHeader
 
   Widget _buildSliverFeatureGrid(List<Map<String, dynamic>> features,
       int crossAxisCount, double fontScale, ThemeData theme) {
@@ -312,7 +303,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
           if (aspectRatio < 0.85) aspectRatio = 0.85;
 
           return SliverGrid(
-            // Key forces rebuild on restart
             key: ValueKey('grid-${features.hashCode}-$_animationKey'),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossAxisCount,
@@ -325,14 +315,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                 final feature = features[index];
                 final String route = feature['route'];
                 final Map<String, dynamic>? params = feature['params'];
-
-                // 1. Calculate how long this specific item's animation takes
                 final int animationDurationMs = 400 + (index * 80);
-
-                // 2. Check time elapsed since the page loaded (or restart called)
                 final int elapsedMs = DateTime.now().difference(_animationStartTime).inMilliseconds;
 
-                // 3. Define the widget content (The Card)
                 final cardContent = _PressableCard(
                   title: feature['title'],
                   iconPath: feature['icon'],
@@ -347,16 +332,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                   },
                 );
 
-                // 4. Logic: If the animation "should have finished" by now, return Static widget.
-                //    Otherwise, return the Animation.
                 if (elapsedMs > animationDurationMs) {
-                  // Render static (No animation, instant show)
                   return cardContent;
                 }
 
-                // Render animated (Still within the animation window)
                 return TweenAnimationBuilder<double>(
-                  key: ValueKey('card$index-$_animationKey'), // Key ensures it resets
+                  key: ValueKey('card$index-$_animationKey'),
                   duration: Duration(milliseconds: animationDurationMs),
                   tween: Tween(begin: 0.0, end: 1.0),
                   curve: Curves.easeOut,

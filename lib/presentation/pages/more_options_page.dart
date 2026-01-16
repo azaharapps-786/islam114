@@ -23,6 +23,14 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
   @override
   void initState() {
     super.initState();
+    final settings = Provider.of<SettingsService>(context, listen: false);
+    try {
+      _selectedLanguage = (settings as dynamic).selectedLanguage?.toString().toLowerCase() ??
+          (settings as dynamic).language?.toString().toLowerCase() ??
+          'english';
+    } catch (e) {
+      _selectedLanguage = 'english';
+    }
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
@@ -87,22 +95,16 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
       'route': '/niyat'
     },
     {
-      'title': 'Library',
-      'icon': Icons.library_books_rounded,
-      'color': Colors.purpleAccent,
-      'route': '/library'
-    },
-    {
-      'title': 'Quran & Science',
-      'icon': Icons.biotech_rounded,
-      'color': Colors.teal,
-      'route': '/quranScience'
-    },
-    {
       'title': '99 Names',
       'icon': Icons.auto_awesome_rounded,
       'color': Colors.amber,
       'route': '/allahNames'
+    },
+    {
+      'title': 'Library',
+      'icon': Icons.library_books_rounded,
+      'color': Colors.purpleAccent,
+      'route': '/library'
     },
     {
       'title': 'Amal Namah',
@@ -139,7 +141,20 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
                 ),
                 onTap: () {
                   Haptics.vibrate(HapticsType.light);
+
+                  // 1. Update Local UI immediately
                   setState(() => _selectedLanguage = lang);
+
+                  // 2. SAVE to the Global Settings Service so it's remembered!
+                  final settings = Provider.of<SettingsService>(context, listen: false);
+                  try {
+                    // We use dynamic to call your specific setter (likely setLanguage or similar)
+                    // If your service has a different method name, replace 'setSelectedLanguage'
+                    (settings as dynamic).setSelectedLanguage(lang);
+                  } catch (e) {
+                    debugPrint("Note: Could not call setSelectedLanguage on service: $e");
+                  }
+
                   Navigator.pop(context);
                 },
               );

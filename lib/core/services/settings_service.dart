@@ -13,56 +13,62 @@ class SettingsService with ChangeNotifier {
   bool _showArabic = true;
   Color _backgroundColor = const Color(0xFFE8F5E8);
 
+  // Global Language Selection
+  String _selectedLanguage = 'english';
+
   // Surah display settings by language
   Map<String, SurahDisplaySettings> _surahDisplaySettings = {};
 
   // Bookmarked verses
   List<Map<String, dynamic>> _bookmarkedVerses = [];
 
+  // Getters
   ThemeMode get themeMode => _themeMode;
   double get fontScale => _fontScale;
   CalculationMethod get calculationMethod => _calculationMethod;
   bool get showArabic => _showArabic;
   Color get backgroundColor => _backgroundColor;
   Map<String, SurahDisplaySettings> get surahDisplaySettings => _surahDisplaySettings;
+  String get selectedLanguage => _selectedLanguage;
 
   Future<void> loadSettings() async {
     _prefs = await SharedPreferences.getInstance();
+
+    // Load persisted global language
+    _selectedLanguage = _prefs.getString('selected_language_key') ?? 'english';
+
     _themeMode = ThemeMode.light;
     _fontScale = _prefs.getDouble(AppConstants.fontScaleKey) ?? 1.0;
 
-    // Load calculation method
     final calculationMethodString = _prefs.getString(AppConstants.calculationMethodKey) ?? 'ummAlQura';
     _calculationMethod = CalculationMethod.values.firstWhere(
           (method) => method.toString() == calculationMethodString,
       orElse: () => CalculationMethod.ummAlQura,
     );
 
-    // Load show Arabic
     _showArabic = _prefs.getBool('show_arabic_key') ?? true;
 
-    // Load background color
     final bgColorStr = _prefs.getString('background_color_key');
     _backgroundColor = bgColorStr != null ? Color(int.parse(bgColorStr)) : const Color(0xFFE8F5E8);
 
-    // Initialize display settings
     _initializeDisplaySettings();
-
-    // Load display settings
     await _loadDisplaySettings();
-
-    // Load bookmarked verses
     await _loadBookmarkedVerses();
 
     notifyListeners();
   }
 
-  // --- ADDED METHOD TO FIX VERSECARD ERROR ---
+  Future<void> setSelectedLanguage(String lang) async {
+    if (_selectedLanguage != lang) {
+      _selectedLanguage = lang;
+      await _prefs.setString('selected_language_key', lang);
+      notifyListeners();
+    }
+  }
+
   SurahDisplaySettings getSurahDisplaySettings(String language, bool isTafseer) {
-    // Returns existing settings or defaults if language isn't found
     return _surahDisplaySettings[language] ?? SurahDisplaySettings.defaultFor(language);
   }
-  // -------------------------------------------
 
   Future<void> updateThemeMode(ThemeMode newThemeMode) async {
     _themeMode = newThemeMode;
@@ -83,7 +89,6 @@ class SettingsService with ChangeNotifier {
   Future<void> setCalculationMethod(CalculationMethod method) async {
     _calculationMethod = method;
     notifyListeners();
-
     await _prefs.setString(AppConstants.calculationMethodKey, method.toString());
   }
 
@@ -108,7 +113,6 @@ class SettingsService with ChangeNotifier {
 
   Future<void> _loadDisplaySettings() async {
     final languages = ['english', 'assamese', 'hindi', 'bengali', 'arabic'];
-
     for (final language in languages) {
       final settingsJson = _prefs.getString('surah_display_settings_$language');
       if (settingsJson != null) {
@@ -142,11 +146,7 @@ class SettingsService with ChangeNotifier {
         json.encode(entry.value.toJson()),
       );
     }
-
-    await _prefs.setString(
-      'bookmarked_verses',
-      json.encode(_bookmarkedVerses),
-    );
+    await _prefs.setString('bookmarked_verses', json.encode(_bookmarkedVerses));
   }
 
   void updateSurahDisplaySettings(String language, SurahDisplaySettings settings) {
@@ -178,7 +178,6 @@ class SettingsService with ChangeNotifier {
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
     }
-
     _saveSettings();
     notifyListeners();
   }
@@ -193,6 +192,7 @@ class SettingsService with ChangeNotifier {
   }
 }
 
+// --- THIS IS THE CLASS THAT WAS MISSING ---
 class SurahDisplaySettings {
   final bool showArabic;
   final bool showTranslation;

@@ -22,7 +22,9 @@ import 'presentation/pages/bukhari_hadith_page.dart';
 import 'presentation/pages/qibla_page.dart';
 import 'presentation/pages/amal_namah_dashboard.dart';
 import 'presentation/pages/darood_page.dart';
-import 'presentation/pages/allah_names_page.dart'; // ← Make sure this import exists!
+import 'presentation/pages/allah_names_page.dart';
+import 'presentation/pages/library_list_page.dart';
+import 'presentation/pages/about_us_page.dart';
 
 final RouteObserver<PageRoute<dynamic>> routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -153,6 +155,8 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
             '/hadith': (context) => const BukhariHadithPage(),
             '/qibla': (context) => const QiblaPage(),
             '/niyat': (context) => const NiyatListPage(),
+            '/library': (context) => const LibraryListPage(),
+            '/about': (context) => const AboutUsPage(),
             // '/darood' and '/allahNames' are intentionally NOT here → handled by onGenerateRoute
           },
           navigatorObservers: [routeObserver],
