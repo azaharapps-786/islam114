@@ -3,6 +3,7 @@ import 'package:islam114/presentation/pages/niyat_list_page.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 
+import 'presentation/pages/dua_page.dart';
 import 'core/services/settings_service.dart';
 import 'core/services/deeds_service.dart';
 import 'core/themes/app_theme.dart';
@@ -168,27 +169,23 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
               }
 
               // Handle REAL 99 Names page (AllahNamesPage)
+              // Handle REAL 99 Names page (AllahNamesPage)
               if (settings.name == '/allahNames') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final language = args?['language'] as String? ?? 'english';
 
                 return MaterialPageRoute(
-                  builder: (context) => const AllahNamesPage(), // Now uses your real page!
-                  // If you add language parameter later:
-                  // builder: (context) => AllahNamesPage(language: language),
+                  builder: (context) => AllahNamesPage(language: language), // Pass the language parameter here
                 );
               }
 
-              // Handle other placeholder pages (Rabbana Duas, Library, Quran & Science)
-              if (settings.name == '/rabbanaDuas' ||
-                  settings.name == '/library' ||
-                  settings.name == '/quranScience') {
+              if (settings.name == '/rabbanaDuas') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final language = args?['language'] as String? ?? 'english';
-                final title = args?['title'] as String? ?? 'Islamic Content';
+                final title = args?['title'] as String? ?? 'Rabbana Duas';
 
                 return MaterialPageRoute(
-                  builder: (context) => PlaceholderPage(
+                  builder: (context) => DuaPage(
                     title: title,
                     language: language,
                   ),

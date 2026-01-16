@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:haptic_feedback/haptic_feedback.dart';
-
 import '../../core/services/settings_service.dart';
 import '../widgets/more_option_card.dart';
 
@@ -14,26 +13,21 @@ class MoreOptionsPage extends StatefulWidget {
   State<MoreOptionsPage> createState() => _MoreOptionsPageState();
 }
 
-class _MoreOptionsPageState extends State<MoreOptionsPage>
-    with SingleTickerProviderStateMixin {
+class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late List<Animation<double>> _cardFadeAnimations;
   late List<Animation<double>> _cardScaleAnimations;
   late List<Animation<double>> _cardBounceAnimations;
-
   String _selectedLanguage = 'english'; // default
 
   @override
   void initState() {
     super.initState();
-
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
-
     const stagger = 0.08;
-
     _cardFadeAnimations = List.generate(7, (index) {
       final begin = index * stagger;
       final end = math.min(1.0, 0.85 + (index * stagger));
@@ -44,7 +38,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
         ),
       );
     });
-
     _cardScaleAnimations = List.generate(7, (index) {
       final begin = 0.05 + (index * stagger);
       final end = math.min(1.0, 0.9 + (index * stagger));
@@ -55,7 +48,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
         ),
       );
     });
-
     _cardBounceAnimations = List.generate(7, (index) {
       final begin = 0.1 + (index * stagger);
       final end = math.min(1.0, 0.95 + (index * stagger));
@@ -66,7 +58,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
         ),
       );
     });
-
     _controller.forward();
   }
 
@@ -229,7 +220,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
                   ),
                 ],
               ),
-
               Positioned(
                 right: 24,
                 bottom: 32,
@@ -280,7 +270,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
           itemCount: _moreOptions.length,
           itemBuilder: (context, index) {
             final option = _moreOptions[index];
-
             return AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
@@ -297,7 +286,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage>
                         fontScale: fontScale,
                         onTap: () {
                           final bool skipDialog = option['skipLanguageDialog'] == true;
-
                           if (skipDialog) {
                             Navigator.pushNamed(
                               context,

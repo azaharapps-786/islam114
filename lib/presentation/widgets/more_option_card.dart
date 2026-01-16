@@ -43,14 +43,14 @@ class MoreOptionCard extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withOpacity(0.0),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   icon,
                   color: color,
                   // Reduced icon size
-                  size: (24 * fontScale).clamp(20.0, 28.0),
+                  size: (64 * fontScale).clamp(20.0, 48.0),
                 ),
               ),
               const SizedBox(height: 12),
