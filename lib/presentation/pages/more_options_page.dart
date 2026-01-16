@@ -36,7 +36,7 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
       vsync: this,
     );
     const stagger = 0.08;
-    _cardFadeAnimations = List.generate(7, (index) {
+    _cardFadeAnimations = List.generate(8, (index) {
       final begin = index * stagger;
       final end = math.min(1.0, 0.85 + (index * stagger));
       return Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -46,7 +46,7 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
         ),
       );
     });
-    _cardScaleAnimations = List.generate(7, (index) {
+    _cardScaleAnimations = List.generate(8, (index) {
       final begin = 0.05 + (index * stagger);
       final end = math.min(1.0, 0.9 + (index * stagger));
       return Tween<double>(begin: 0.9, end: 1.0).animate(
@@ -56,7 +56,7 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
         ),
       );
     });
-    _cardBounceAnimations = List.generate(7, (index) {
+    _cardBounceAnimations = List.generate(8, (index) {
       final begin = 0.1 + (index * stagger);
       final end = math.min(1.0, 0.95 + (index * stagger));
       return Tween<double>(begin: 20.0, end: 0.0).animate(
@@ -112,6 +112,12 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
       'color': Colors.orange[700],
       'route': '/amalNamah',
       'skipLanguageDialog': true,
+    },
+    {
+      'title': 'Quran Recite',
+      'icon': Icons.mic_external_on_rounded,
+      'color': Colors.teal,
+      'route': '/quranRecite'
     },
   ];
 

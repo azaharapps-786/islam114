@@ -25,6 +25,7 @@ import 'presentation/pages/darood_page.dart';
 import 'presentation/pages/allah_names_page.dart';
 import 'presentation/pages/library_list_page.dart';
 import 'presentation/pages/about_us_page.dart';
+import 'presentation/pages/quran_recite_page.dart';
 
 final RouteObserver<PageRoute<dynamic>> routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -172,8 +173,15 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
                 );
               }
 
-              // Handle REAL 99 Names page (AllahNamesPage)
-              // Handle REAL 99 Names page (AllahNamesPage)
+              if (settings.name == '/quranRecite') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                final language = args?['language'] as String? ?? 'english';
+
+                return MaterialPageRoute(
+                  builder: (context) => QuranRecitePage(language: language),
+                );
+              }
+
               if (settings.name == '/allahNames') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final language = args?['language'] as String? ?? 'english';
