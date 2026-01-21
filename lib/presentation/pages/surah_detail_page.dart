@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/services/settings_service.dart';
 import '../widgets/verse_card.dart';
 import '../widgets/surah_settings_dialog.dart';
+import 'tafseer_settings_dialog.dart';
 
 class SurahDetailPage extends StatefulWidget {
   const SurahDetailPage({super.key});
@@ -26,6 +27,9 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   bool _isTafseer = false;
   bool _isSearching = false;
   bool _showSearchBar = false;
+
+  // Cache for additional data to avoid repeated loading
+  Map<String, dynamic> _cachedData = {};
 
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
@@ -55,6 +59,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
       _language = newLanguage;
       _surahNumber = newSurahNumber;
       _isTafseer = newIsTafseer;
+      _cachedData.clear(); // Clear cache when changing surah or language
       _loadSurahData();
     } else if (_verses.isEmpty) {
       _loadSurahData();
@@ -68,17 +73,130 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
     });
 
     try {
-      final String jsonFile = _isTafseer
-          ? 'assets/data/quran_${_language}_tafseer.json'
-          : 'assets/data/quran_${_language}.json';
+      // Load the main language data
+      String jsonFile;
+      if (_isTafseer) {
+        jsonFile = 'assets/data/quran_${_language}_tafseer.json';
+      } else {
+        jsonFile = 'assets/data/quran_${_language}.json';
+      }
 
       final String jsonString = await rootBundle.loadString(jsonFile);
       final dynamic rawJson = json.decode(jsonString);
 
+      // Load Arabic data separately (for all languages except Arabic)
+      List<Map<String, dynamic>> arabicVerses = [];
+      if (_language != 'arabic') {
+        try {
+          if (!_cachedData.containsKey('arabic')) {
+            final String arabicJsonString = await rootBundle.loadString('assets/data/quran_arabic.json');
+            final List<dynamic> arabicRaw = json.decode(arabicJsonString);
+            _cachedData['arabic'] = arabicRaw;
+          }
+
+          final List<dynamic> arabicRaw = _cachedData['arabic'];
+          final surahData = arabicRaw.firstWhere(
+                (s) => (s['id'] as num?)?.toInt() == _surahNumber,
+            orElse: () => null,
+          );
+
+          if (surahData != null) {
+            final versesList = surahData['verses'] as List?;
+            arabicVerses = (versesList ?? []).map((v) => {
+              'id': v['id'],
+              'aya': v['id'],
+              'arabic': v['text'],
+            }).toList();
+          }
+        } catch (e) {
+          debugPrint('Failed to load Arabic data: $e');
+        }
+      }
+
+      // Load English transliteration data for all languages (not just English)
+      List<Map<String, dynamic>> transliterationVerses = [];
+      try {
+        if (!_cachedData.containsKey('transliteration')) {
+          final String transJsonString = await rootBundle.loadString(
+            'assets/data/quran_english_transliteration.json',
+          );
+          final List<dynamic> transRaw = json.decode(transJsonString);
+          _cachedData['transliteration'] = transRaw;
+        }
+
+        final List<dynamic> transRaw = _cachedData['transliteration'];
+        transliterationVerses = transRaw
+            .where((v) => (v['surah_no'] as num?)?.toInt() == _surahNumber)
+            .map((v) => {
+          'aya': v['verse_no'],
+          'transliteration': v['verse_text'] ?? '',
+        })
+            .toList();
+      } catch (e) {
+        debugPrint('Failed to load English transliteration: $e');
+      }
+
+      // FINAL FIX: Load the primary translation text for Tafseer mode using robust logic
+      Map<int, String> primaryTranslations = {};
+      if (_isTafseer && _language != 'arabic') {
+        try {
+          final String primaryJsonString = await rootBundle.loadString('assets/data/quran_${_language}.json');
+          final dynamic primaryRaw = json.decode(primaryJsonString);
+          List<dynamic> verseList = [];
+
+          // Apply the same robust logic as the regular Quran view
+          if (primaryRaw is List && primaryRaw.isNotEmpty) {
+            // Check if this is a flat structure with sura/surah field
+            if (primaryRaw[0].containsKey('sura') || primaryRaw[0].containsKey('surah')) {
+              verseList = primaryRaw.where((v) {
+                final num? n = v['sura'] ?? v['surah'];
+                return n?.toInt() == _surahNumber;
+              }).toList();
+            }
+            // Check if this is a nested structure with verses field
+            else if (primaryRaw[0].containsKey('verses')) {
+              final surahData = primaryRaw.firstWhere(
+                    (s) => (s['id'] as num?)?.toInt() == _surahNumber,
+                orElse: () => null,
+              );
+              if (surahData != null) {
+                verseList = surahData['verses'] as List;
+              }
+            }
+          }
+
+          // Sort the verses to ensure correct mapping
+          if (verseList.isNotEmpty && (verseList[0].containsKey('aya') || verseList[0].containsKey('id'))) {
+            verseList.sort((a, b) {
+              final aVerse = (a['aya'] ?? a['id']) as num?;
+              final bVerse = (b['aya'] ?? b['id']) as num?;
+              return aVerse?.toInt().compareTo(bVerse?.toInt() ?? 0) ?? 0;
+            });
+          }
+
+          for(final v in verseList) {
+            final id = (v['id'] as num?)?.toInt() ?? (v['aya'] as num?)?.toInt() ?? 0;
+            String text = '';
+            if (_language == 'bengali') {
+              text = v['bengali'] ?? v['translation'] ?? v['text'] ?? '';
+            } else if (_language == 'hindi') {
+              text = v['hindi'] ?? v['translation'] ?? v['text'] ?? '';
+            } else if (_language == 'assamese') {
+              text = v['assamese'] ?? v['translation'] ?? v['text'] ?? '';
+            } else {
+              text = v['translation'] ?? v['text'] ?? '';
+            }
+            if(id > 0) primaryTranslations[id] = text;
+          }
+        } catch (e) {
+          debugPrint('Failed to load primary translation for Tafseer: $e');
+        }
+      }
+
       List<Map<String, dynamic>> verses = [];
 
       if (_isTafseer) {
-        // Tafseer handling unchanged
+        // CORRECTED Tafseer handling
         if (rawJson is Map<String, dynamic>) {
           final tafseerMap = rawJson as Map<String, dynamic>;
           final foundVerses = <Map<String, dynamic>>[];
@@ -89,12 +207,30 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
               final value = tafseerMap[key];
               final text = value is Map ? value['text'] : value.toString();
               if (text.isNotEmpty) {
+                // CORRECTED: Find corresponding data instead of using empty strings
+                String arabicText = '';
+                String translationText = '';
+                String transliterationText = '';
+
+                // Get Arabic text
+                if (_language != 'arabic') {
+                  final arabicMatch = arabicVerses.firstWhere((a) => a['id'] == v, orElse: () => {'arabic': ''});
+                  arabicText = arabicMatch['arabic'] as String;
+                }
+
+                // Get Translation text from our new robust map
+                translationText = primaryTranslations[v] ?? '';
+
+                // Get Transliteration text
+                final transMatch = transliterationVerses.firstWhere((t) => t['aya'] == v, orElse: () => {'transliteration': ''});
+                transliterationText = transMatch['transliteration'] as String;
+
                 foundVerses.add({
                   'id': v,
                   'aya': v,
-                  'arabic': '',
-                  'translation': '',
-                  'transliteration': '',
+                  'arabic': arabicText,
+                  'translation': translationText,
+                  'transliteration': transliterationText,
                   'tafseer': text,
                   'footnotes': '',
                 });
@@ -104,7 +240,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           verses = foundVerses;
         }
       } else if (_language == 'arabic') {
-        // Arabic handling unchanged
+        // Arabic handling (unchanged)
         if (rawJson is List) {
           final surahData = rawJson.firstWhere(
                 (s) => (s['id'] as num?)?.toInt() == _surahNumber,
@@ -117,6 +253,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
               final arabicText = v['text'] ?? '';
               return {
                 'id': v['id'],
+                'aya': v['id'],
                 'arabic': arabicText,
                 'translation': arabicText,
                 'transliteration': '',
@@ -126,52 +263,120 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
           }
         }
       } else {
-        // ALL OTHER LANGUAGES – unified handling (flat + nested)
+        // All other languages (including English, Bengali, Hindi, Assamese)
         List<dynamic> verseList = [];
 
+        // Handle different JSON structures
         if (rawJson is List) {
-          // Flat format (English, Hindi, Assamese, etc.)
-          if (rawJson.isNotEmpty &&
-              (rawJson[0].containsKey('sura') || rawJson[0].containsKey('surah'))) {
-            verseList = rawJson.where((v) {
-              final num? n = v['sura'] ?? v['surah'];
-              return n?.toInt() == _surahNumber;
-            }).toList();
-          }
-          // Nested format (Bengali style)
-          else if (rawJson.isNotEmpty && rawJson[0].containsKey('verses')) {
-            final surahData = rawJson.firstWhere(
-                  (s) => (s['id'] as num?)?.toInt() == _surahNumber,
-              orElse: () => null,
-            );
-            if (surahData != null) {
-              verseList = surahData['verses'] as List;
-              // FIXED: Added 'bengali' field for surah name
-              _surahName = surahData['translation'] ??
-                  surahData['name'] ??
-                  surahData['bengali'] ??
-                  'Surah $_surahNumber';
+          if (rawJson.isNotEmpty) {
+            // Check if this is a flat structure with sura/surah field
+            if (rawJson[0].containsKey('sura') || rawJson[0].containsKey('surah')) {
+              verseList = rawJson.where((v) {
+                final num? n = v['sura'] ?? v['surah'];
+                return n?.toInt() == _surahNumber;
+              }).toList();
+            }
+            // Check if this is a nested structure with verses field
+            else if (rawJson[0].containsKey('verses')) {
+              final surahData = rawJson.firstWhere(
+                    (s) => (s['id'] as num?)?.toInt() == _surahNumber,
+                orElse: () => null,
+              );
+              if (surahData != null) {
+                verseList = surahData['verses'] as List;
+                _surahName = surahData['translation'] ??
+                    surahData['name'] ??
+                    surahData['bengali'] ??
+                    surahData['hindi'] ??
+                    surahData['assamese'] ??
+                    'Surah $_surahNumber';
+              }
+            }
+            // Handle the case where it's a direct list of surahs
+            else {
+              final surahData = rawJson.firstWhere(
+                    (s) => (s['id'] as num?)?.toInt() == _surahNumber,
+                orElse: () => null,
+              );
+              if (surahData != null) {
+                verseList = surahData['verses'] as List;
+                _surahName = surahData['translation'] ??
+                    surahData['name'] ??
+                    surahData['bengali'] ??
+                    surahData['hindi'] ??
+                    surahData['assamese'] ??
+                    'Surah $_surahNumber';
+              }
             }
           }
         }
 
         if (verseList.isEmpty) throw Exception('No verses found');
 
-        verses = verseList.map((v) {
+        // FIXED: Sort verses by their actual verse number, not by their position in the list
+        if (verseList.isNotEmpty && (verseList[0].containsKey('aya') || verseList[0].containsKey('id'))) {
+          verseList.sort((a, b) {
+            final aVerse = (a['aya'] ?? a['id']) as num?;
+            final bVerse = (b['aya'] ?? b['id']) as num?;
+            return aVerse?.toInt().compareTo(bVerse?.toInt() ?? 0) ?? 0;
+          });
+        }
+
+        verses = verseList.asMap().entries.map((entry) {
+          final index = entry.key;
+          final v = entry.value;
           final map = Map<String, dynamic>.from(v);
 
-          // Arabic is ALWAYS taken from 'text' field – never forced hidden
-          map['arabic'] = map['text'] ?? map['arabic'] ?? '';
+          // FIXED: Get verse ID and ensure it's correct for the current surah
+          // For English, Assamese, and Hindi, we need to use the actual verse number from the data
+          // not the index position
+          int verseId;
+          if (map.containsKey('aya') && map['aya'] != null) {
+            verseId = (map['aya'] as num?)?.toInt() ?? 0;
+          } else if (map.containsKey('id') && map['id'] != null) {
+            verseId = (map['id'] as num?)?.toInt() ?? 0;
+          } else {
+            // If no verse number is found, use index + 1 as fallback
+            verseId = index + 1;
+          }
 
-          // FIXED: Handle Bengali translation properly
+          // Set Arabic from separate Arabic data (not from Bengali JSON)
+          String arabicText = '';
+          if (arabicVerses.isNotEmpty) {
+            final arabicMatch = arabicVerses.firstWhere(
+                  (a) => a['id'] == verseId,
+              orElse: () => {'arabic': ''},
+            );
+            arabicText = arabicMatch['arabic'] as String;
+          }
+          map['arabic'] = arabicText;
+
+          // Translation (special handling for Bengali, Hindi, Assamese)
           if (_language == 'bengali') {
             map['translation'] = map['bengali'] ?? map['translation'] ?? map['text'] ?? '';
+          } else if (_language == 'hindi') {
+            map['translation'] = map['hindi'] ?? map['translation'] ?? map['text'] ?? '';
+          } else if (_language == 'assamese') {
+            map['translation'] = map['assamese'] ?? map['translation'] ?? map['text'] ?? '';
           } else {
             map['translation'] = map['translation'] ?? '';
           }
 
-          map['id'] = map['id'] ?? map['aya'];
-          map['transliteration'] = map['transliteration'] ?? '';
+          // FIXED: Ensure ID and aya are correctly set to the verse number
+          map['id'] = verseId;
+          map['aya'] = verseId;
+
+          // Transliteration (from English transliteration data)
+          if (transliterationVerses.isNotEmpty) {
+            final match = transliterationVerses.firstWhere(
+                  (t) => t['aya'] == verseId,
+              orElse: () => {'transliteration': ''},
+            );
+            map['transliteration'] = match['transliteration'] as String;
+          } else {
+            map['transliteration'] = '';
+          }
+
           map['tafseer'] = '';
           map['footnotes'] = '';
 
@@ -185,6 +390,7 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
         _isLoading = false;
       });
     } catch (e) {
+      debugPrint('Error loading surah: $e');
       _createFallbackData();
     }
   }
@@ -292,15 +498,102 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
   }
 
   void _showSettings() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => SurahSettingsDialog(
-        language: _language,
-        isTafseerMode: _isTafseer,
-      ),
-    );
+    // Use different dialog based on whether we're in Tafseer mode
+    if (_isTafseer) {
+      showGeneralDialog(
+        context: context,
+        barrierLabel: 'Tafseer Settings',
+        barrierDismissible: true,
+        barrierColor: Colors.black.withOpacity(0.5),
+        transitionDuration: const Duration(milliseconds: 400),
+        // CORRECTED: Wrap the dialog in a Consumer to provide the SettingsService
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return Consumer<SettingsService>(
+            builder: (context, settingsService, child) {
+              return TafseerSettingsDialog(
+                language: _language,
+              );
+            },
+          );
+        },
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          // Elastic scale animation
+          final scaleAnimation = Tween<double>(
+            begin: 0.5,
+            end: 1.0,
+          ).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve: Curves.elasticOut,
+            ),
+          );
+
+          // Fade animation
+          final fadeAnimation = Tween<double>(
+            begin: 0.0,
+            end: 1.0,
+          ).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
+            ),
+          );
+
+          return FadeTransition(
+            opacity: fadeAnimation,
+            child: ScaleTransition(
+              scale: scaleAnimation,
+              child: child,
+            ),
+          );
+        },
+      );
+    } else {
+      showGeneralDialog(
+        context: context,
+        barrierLabel: 'Settings',
+        barrierDismissible: true,
+        barrierColor: Colors.black.withOpacity(0.5),
+        transitionDuration: const Duration(milliseconds: 400),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return SurahSettingsDialog(
+            language: _language,
+            isTafseerMode: _isTafseer,
+          );
+        },
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          // Elastic scale animation
+          final scaleAnimation = Tween<double>(
+            begin: 0.5,
+            end: 1.0,
+          ).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve: Curves.elasticOut,
+            ),
+          );
+
+          // Fade animation
+          final fadeAnimation = Tween<double>(
+            begin: 0.0,
+            end: 1.0,
+          ).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
+            ),
+          );
+
+          return FadeTransition(
+            opacity: fadeAnimation,
+            child: ScaleTransition(
+              scale: scaleAnimation,
+              child: child,
+            ),
+          );
+        },
+      );
+    }
   }
 
   void _shareVerse(int verseNumber, String arabic, String translation) {
@@ -428,6 +721,8 @@ class _SurahDetailPageState extends State<SurahDetailPage> {
                       onCopy: () => _copyVerse(vn, arabic, translation),
                       onBookmark: () => _toggleBookmark(vn, verse),
                       fontScale: fontScale,
+                      // Pass cached data to avoid repeated loading
+                      cachedData: _cachedData,
                     );
                   },
                 ),

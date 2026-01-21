@@ -102,36 +102,49 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
       context: context,
       barrierLabel: 'Tafseer Language Selection',
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.4),
-      transitionDuration: const Duration(milliseconds: 350),
+      barrierColor: Colors.black.withOpacity(0.5),
+      transitionDuration: const Duration(milliseconds: 400),
       pageBuilder: (context, animation, secondaryAnimation) {
         return const TafseerLanguageDialog();
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(0.0, 1.0);
-        const end = Offset.zero;
-        final tween = Tween(begin: begin, end: end).chain(
-          CurveTween(curve: Curves.easeOutBack),
+        // Elastic scale animation
+        final scaleAnimation = Tween<double>(
+          begin: 0.5,
+          end: 1.0,
+        ).animate(
+          CurvedAnimation(
+            parent: animation,
+            curve: Curves.elasticOut,
+          ),
         );
 
-        final offsetAnimation = animation.drive(tween);
+        // Fade animation
+        final fadeAnimation = Tween<double>(
+          begin: 0.0,
+          end: 1.0,
+        ).animate(
+          CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
+          ),
+        );
 
         return FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-          child: SlideTransition(
-            position: offsetAnimation,
+          opacity: fadeAnimation,
+          child: ScaleTransition(
+            scale: scaleAnimation,
             child: child,
           ),
         );
       },
     );
   }
-
   // Static constant data - RESTORED to original (About Us removed from grid)
   static const List<Map<String, dynamic>> _primaryFeatures = [
     {'title': 'অসমীয়া কোৰআন', 'icon': 'assets/icons/quran_assamese.svg', 'route': '/surahList', 'params': {'language': 'assamese'}, 'emoji': '📖'},
     {'title': 'English Quran', 'icon': 'assets/icons/quran_english.svg', 'route': '/surahList', 'params': {'language': 'english'}, 'emoji': '📕'},
-    {'title': 'हिन्दी   क़ুরান', 'icon': 'assets/icons/quran_hindi.svg', 'route': '/surahList', 'params': {'language': 'hindi'}, 'emoji': '📗'},
+    {'title': 'हिन्दी   कुरान', 'icon': 'assets/icons/quran_hindi.svg', 'route': '/surahList', 'params': {'language': 'hindi'}, 'emoji': '📗'},
     {'title': 'Arabic Quran', 'icon': 'assets/icons/quran_arabic.svg', 'route': '/surahList', 'params': {'language': 'arabic'}, 'emoji': '📘'},
     {'title': 'Bengali Quran', 'icon': 'assets/icons/quran_bengali.svg', 'route': '/surahList', 'params': {'language': 'bengali'}, 'emoji': '📙'},
     {'title': 'Quran Tafseer', 'icon': 'assets/icons/tafseer.svg', 'route': '/tafseerLanguageSelection', 'params': null, 'emoji': '📚'},

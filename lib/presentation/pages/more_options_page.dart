@@ -113,12 +113,6 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
       'route': '/amalNamah',
       'skipLanguageDialog': true,
     },
-    {
-      'title': 'Quran Recite',
-      'icon': Icons.mic_external_on_rounded,
-      'color': Colors.teal,
-      'route': '/quranRecite'
-    },
   ];
 
   void _showLanguageSelectionDialog(BuildContext context) {

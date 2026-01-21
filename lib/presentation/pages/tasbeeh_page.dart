@@ -158,7 +158,18 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
       await prefs.setInt('target', _target);
       await prefs.setBool('sound_enabled', _soundEnabled);
       await prefs.setBool('haptic_enabled', _hapticEnabled);
-      _history[_today] = _counter;
+
+      // FIXED: Update history and trigger UI update
+      if (mounted) {
+        setState(() {
+          _history[_today] = _counter;
+        });
+      }
+
+      // Also save the history to SharedPreferences
+      for (final entry in _history.entries) {
+        await prefs.setInt('count_${entry.key}', entry.value);
+      }
     } catch (e) {
       debugPrint('Save error: $e');
     }
@@ -182,18 +193,20 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
   void _onTapCancel() => _tapAnimationController.reverse();
 
   void _incrementCounter() {
+    // FIXED: Update counter first, then save data
     setState(() => _counter++);
     _recentTaps++;
     _playSound();
     if (_hapticEnabled) HapticFeedback.lightImpact();
-    _saveData();
+    _saveData(); // This will now save the updated counter and update history
   }
 
   void _decrementCounter() {
     if (_counter > 0) {
+      // FIXED: Update counter first, then save data
       setState(() => _counter--);
       _playSound();
-      _saveData();
+      _saveData(); // This will now save the updated counter and update history
     }
   }
 
@@ -208,7 +221,7 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
           TextButton(
             onPressed: () {
               setState(() => _counter = 0);
-              _saveData();
+              _saveData(); // Save the reset counter and update history
               Navigator.pop(context);
             },
             child: const Text('Reset', style: TextStyle(color: Colors.red)),
@@ -355,7 +368,7 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
                                   child: Container(
                                     decoration: BoxDecoration(
                                       // CHANGED: Surface color with transparency
-                                      color: theme.colorScheme.surface.withOpacity(0.4),
+                                      color: theme.colorScheme.surface.withOpacity(0.9),
                                       borderRadius: BorderRadius.circular(16),
                                       border: containerBorder,
                                       boxShadow: [

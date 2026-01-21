@@ -16,8 +16,12 @@ class SettingsService with ChangeNotifier {
   // Global Language Selection
   String _selectedLanguage = 'english';
 
-  // Surah display settings by language
+  // FIX: Separate settings for Quran and Tafseer
+  // Surah display settings by language (for Quran)
   Map<String, SurahDisplaySettings> _surahDisplaySettings = {};
+
+  // Tafseer display settings by language (for Tafseer)
+  Map<String, SurahDisplaySettings> _tafseerDisplaySettings = {};
 
   // Bookmarked verses
   List<Map<String, dynamic>> _bookmarkedVerses = [];
@@ -53,6 +57,7 @@ class SettingsService with ChangeNotifier {
 
     _initializeDisplaySettings();
     await _loadDisplaySettings();
+    await _loadTafseerDisplaySettings(); // FIX: Load Tafseer settings separately
     await _loadBookmarkedVerses();
 
     notifyListeners();
@@ -66,8 +71,18 @@ class SettingsService with ChangeNotifier {
     }
   }
 
+  // FIX: Smart getter that returns the correct settings based on mode
   SurahDisplaySettings getSurahDisplaySettings(String language, bool isTafseer) {
-    return _surahDisplaySettings[language] ?? SurahDisplaySettings.defaultFor(language);
+    if (isTafseer) {
+      return _tafseerDisplaySettings[language] ?? SurahDisplaySettings.defaultForTafseer(language);
+    } else {
+      return _surahDisplaySettings[language] ?? SurahDisplaySettings.defaultFor(language);
+    }
+  }
+
+  // FIX: Dedicated getter for Tafseer settings
+  SurahDisplaySettings getTafseerDisplaySettings(String language) {
+    return _tafseerDisplaySettings[language] ?? SurahDisplaySettings.defaultForTafseer(language);
   }
 
   Future<void> updateThemeMode(ThemeMode newThemeMode) async {
@@ -108,6 +123,7 @@ class SettingsService with ChangeNotifier {
     final languages = ['english', 'assamese', 'hindi', 'bengali', 'arabic'];
     for (final language in languages) {
       _surahDisplaySettings[language] = SurahDisplaySettings.defaultFor(language);
+      _tafseerDisplaySettings[language] = SurahDisplaySettings.defaultForTafseer(language);
     }
   }
 
@@ -121,6 +137,22 @@ class SettingsService with ChangeNotifier {
           _surahDisplaySettings[language] = SurahDisplaySettings.fromJson(settingsMap);
         } catch (e) {
           debugPrint('Error loading display settings for $language: $e');
+        }
+      }
+    }
+  }
+
+  // FIX: Separate loader for Tafseer settings
+  Future<void> _loadTafseerDisplaySettings() async {
+    final languages = ['english', 'assamese', 'hindi', 'bengali', 'arabic'];
+    for (final language in languages) {
+      final settingsJson = _prefs.getString('tafseer_display_settings_$language');
+      if (settingsJson != null) {
+        try {
+          final Map<String, dynamic> settingsMap = json.decode(settingsJson);
+          _tafseerDisplaySettings[language] = SurahDisplaySettings.fromJson(settingsMap);
+        } catch (e) {
+          debugPrint('Error loading Tafseer display settings for $language: $e');
         }
       }
     }
@@ -140,9 +172,17 @@ class SettingsService with ChangeNotifier {
   }
 
   Future<void> _saveSettings() async {
+    // Save Quran settings
     for (final entry in _surahDisplaySettings.entries) {
       await _prefs.setString(
         'surah_display_settings_${entry.key}',
+        json.encode(entry.value.toJson()),
+      );
+    }
+    // FIX: Save Tafseer settings with a different key
+    for (final entry in _tafseerDisplaySettings.entries) {
+      await _prefs.setString(
+        'tafseer_display_settings_${entry.key}',
         json.encode(entry.value.toJson()),
       );
     }
@@ -151,6 +191,13 @@ class SettingsService with ChangeNotifier {
 
   void updateSurahDisplaySettings(String language, SurahDisplaySettings settings) {
     _surahDisplaySettings[language] = settings;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  // FIX: Dedicated updater for Tafseer settings
+  void updateTafseerDisplaySettings(String language, SurahDisplaySettings settings) {
+    _tafseerDisplaySettings[language] = settings;
     _saveSettings();
     notifyListeners();
   }
@@ -228,6 +275,20 @@ class SurahDisplaySettings {
       showTransliteration: !isArabic,
       showTafseer: false,
       additionalTranslations: defaultAdvancedTranslations,
+      additionalTransliterations: {},
+      additionalTafseers: {},
+    );
+  }
+
+  // FIX: New factory for Tafseer defaults
+  factory SurahDisplaySettings.defaultForTafseer(String language) {
+    // For Tafseer, default to showing translation but not Arabic or transliteration
+    return SurahDisplaySettings(
+      showArabic: false,
+      showTranslation: true,
+      showTransliteration: false,
+      showTafseer: true, // Always show Tafseer in Tafseer mode
+      additionalTranslations: {},
       additionalTransliterations: {},
       additionalTafseers: {},
     );

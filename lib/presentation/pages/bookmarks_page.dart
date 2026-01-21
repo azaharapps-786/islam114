@@ -105,6 +105,8 @@ class BookmarksPage extends StatelessWidget {
                       context, surahNumber, verseNumber, verseData['arabic'] ?? '', verseData['translation'] ?? ''),
                   onBookmark: () => _toggleBookmarkInList(context, bookmark),
                   fontScale: settings.fontScale,
+                  // FIXED: Added the required cachedData parameter
+                  cachedData: {}, // Empty map since we don't need cached data in bookmarks
                 );
               }),
             );

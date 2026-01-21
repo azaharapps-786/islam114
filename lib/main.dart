@@ -25,7 +25,6 @@ import 'presentation/pages/darood_page.dart';
 import 'presentation/pages/allah_names_page.dart';
 import 'presentation/pages/library_list_page.dart';
 import 'presentation/pages/about_us_page.dart';
-import 'presentation/pages/quran_recite_page.dart';
 
 final RouteObserver<PageRoute<dynamic>> routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -158,27 +157,18 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
             '/niyat': (context) => const NiyatListPage(),
             '/library': (context) => const LibraryListPage(),
             '/about': (context) => const AboutUsPage(),
-            // '/darood' and '/allahNames' are intentionally NOT here → handled by onGenerateRoute
+// '/darood' and '/allahNames' are intentionally NOT here → handled by onGenerateRoute
           },
           navigatorObservers: [routeObserver],
           onGenerateRoute: (settings) {
             if (settings.name != null) {
-              // Handle Darood with language
+// Handle Darood with language
               if (settings.name == '/darood') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final language = args?['language'] as String? ?? 'english';
 
                 return MaterialPageRoute(
                   builder: (context) => DaroodPage(language: language),
-                );
-              }
-
-              if (settings.name == '/quranRecite') {
-                final args = settings.arguments as Map<String, dynamic>?;
-                final language = args?['language'] as String? ?? 'english';
-
-                return MaterialPageRoute(
-                  builder: (context) => QuranRecitePage(language: language),
                 );
               }
 
@@ -204,7 +194,7 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
                 );
               }
 
-              // Amal Namah
+// Amal Namah
               if (settings.name == '/amalNamah') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final language = args?['language'] as String? ?? 'english';

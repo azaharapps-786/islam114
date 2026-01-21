@@ -58,7 +58,6 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
       if (lang == widget.language) {
         _currentSettings = _currentSettings.copyWith(showTransliteration: value);
       } else {
-        // FIXED: Use the separate additionalTransliterations map
         final updated = Map<String, bool>.from(_currentSettings.additionalTransliterations);
         updated[lang] = value;
         _currentSettings = _currentSettings.copyWith(additionalTransliterations: updated);
@@ -84,7 +83,7 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
       lang == widget.language ? _currentSettings.showTranslation : _currentSettings.additionalTranslations[lang] ?? false;
 
   bool _isTransliterationEnabled(String lang) =>
-      lang == widget.language ? _currentSettings.showTransliteration : _currentSettings.additionalTransliterations[lang] ?? false; // FIXED: Use separate map
+      lang == widget.language ? _currentSettings.showTransliteration : _currentSettings.additionalTransliterations[lang] ?? false;
 
   bool _isTafseerEnabled(String lang) =>
       lang == widget.language ? _currentSettings.showTafseer : _currentSettings.additionalTafseers[lang] ?? false;
@@ -93,7 +92,7 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
 
   Widget _buildSectionTitle(String title, double fontScale) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8), // Further reduced vertical padding
       child: Text(
         title,
         style: TextStyle(
@@ -105,13 +104,42 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
     );
   }
 
-  // Fixed: onChanged now accepts bool parameter (required by SwitchListTile)
-  Widget _buildSwitch(String title, bool value, void Function(bool) onChanged) {
+  Widget _buildSwitch(String title, bool value, void Function(bool) onChanged, {bool isPrimary = false}) {
     return SwitchListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-      title: Text(title, style: const TextStyle(fontSize: 16)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0), // No vertical padding
+      dense: true, // Make the tile more compact
+      title: Row(
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 15, // Slightly smaller font
+              fontWeight: isPrimary ? FontWeight.bold : FontWeight.normal,
+              color: isPrimary ? Theme.of(context).primaryColor : null,
+            ),
+          ),
+          if (isPrimary) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1), // Smaller padding
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(
+                'Primary',
+                style: TextStyle(
+                  fontSize: 10, // Smaller font
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
       value: value,
-      onChanged: onChanged, // Directly pass the function that accepts bool
+      onChanged: onChanged,
     );
   }
 
@@ -124,6 +152,7 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: theme.cardColor,
+      contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 8), // Reduced bottom padding
       title: Center(
         child: Text(
           'Display Settings',
@@ -142,45 +171,48 @@ class _SurahSettingsDialogState extends State<SurahSettingsDialog> {
               _buildSwitch(
                 'Show Arabic Text',
                 _currentSettings.showArabic,
-                _toggleArabic, // Direct pass — accepts bool
+                _toggleArabic,
               ),
 
-              const Divider(height: 32),
+              const Divider(height: 4), // Further reduced height
 
               // Translations Section
               _buildSectionTitle('Translations', fontScale),
               ..._languages.where((l) => l != 'arabic').map((lang) {
                 final bool isPrimary = lang == widget.language;
                 return _buildSwitch(
-                  '${_capitalize(lang)} Translation${isPrimary ? ' (Primary)' : ''}',
+                  _capitalize(lang),
                   _isTranslationEnabled(lang),
                       (bool newValue) => _toggleTranslation(lang, newValue),
+                  isPrimary: isPrimary,
                 );
               }),
 
-              const Divider(height: 32),
+              const Divider(height: 4), // Further reduced height
 
               // Transliterations Section
               _buildSectionTitle('Transliterations', fontScale),
               ..._languages.where((l) => l != 'arabic').map((lang) {
                 final bool isPrimary = lang == widget.language;
                 return _buildSwitch(
-                  '${_capitalize(lang)} Transliteration${isPrimary ? ' (Primary)' : ''}',
+                  _capitalize(lang),
                   _isTransliterationEnabled(lang),
                       (bool newValue) => _toggleTransliteration(lang, newValue),
+                  isPrimary: isPrimary,
                 );
               }),
 
               // Tafseer Section (only when in Tafseer mode)
               if (widget.isTafseerMode) ...[
-                const Divider(height: 32),
+                const Divider(height: 4), // Further reduced height
                 _buildSectionTitle('Tafseer', fontScale),
                 ..._languages.map((lang) {
                   final bool isPrimary = lang == widget.language;
                   return _buildSwitch(
-                    '${_capitalize(lang)} Tafseer${isPrimary ? ' (Primary)' : ''}',
+                    _capitalize(lang),
                     _isTafseerEnabled(lang),
                         (bool newValue) => _toggleTafseer(lang, newValue),
+                    isPrimary: isPrimary,
                   );
                 }),
               ],

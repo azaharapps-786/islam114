@@ -93,7 +93,7 @@ class AboutUsPage extends StatelessWidget {
                   _buildSectionHeader(theme, 'ABOUT THE PROJECT'),
                   const SizedBox(height: 12),
                   Text(
-                    'Islam114 is a comprehensive Islamic application designed to assist Muslim brothers and sisters in their daily spiritual journey. Built on a 12th gen i3 system with 8GB RAM, this app is optimized for high performance and smooth user experience across all devices.',
+                    'Islam114 is a comprehensive Islamic application designed to assist Muslim brothers and sisters in their daily spiritual journey. It offers a variety of features including prayer times, Quranic verses, and educational resources to help users stay connected with their faith.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       height: 1.6,
                       fontSize: 14, // Standard body size
