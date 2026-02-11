@@ -1,479 +1,457 @@
-import 'dart:async';
-import 'dart:math';
-import 'package:app_settings/app_settings.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
-import 'package:vector_math/vector_math_64.dart' show Vector3;
+import 'dart:math' as math;
+import 'dart:async';
+import 'package:vector_math/vector_math_64.dart' as vector;
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  runApp(const QiblaApp());
+}
+
+class QiblaApp extends StatelessWidget {
+  const QiblaApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(useMaterial3: true),
+      home: const QiblaPage(),
+    );
+  }
+}
 
 class QiblaPage extends StatefulWidget {
   const QiblaPage({super.key});
-
   @override
   State<QiblaPage> createState() => _QiblaPageState();
 }
 
-class _QiblaPageState extends State<QiblaPage> {
-  // --- State Variables ---
-  bool _isFetchingLocation = true;
-  Position? _userPosition;
-  double _qiblaDirection = 0.0; // True Qibla bearing from North (0-360°)
-  double _deviceAzimuth = 0.0; // Current device heading (0-360°)
-  String _statusMessage = "Initializing...";
+class _QiblaPageState extends State<QiblaPage> with TickerProviderStateMixin {
+  // ---------------------------------------------------------------------------
+  // 1. ENGINE CONSTANTS & COLORS
+  // ---------------------------------------------------------------------------
+  static const double _kInternalBias = -75.0;
+  static const double _kaabaLat = 21.422510;
+  static const double _kaabaLon = 39.826168;
 
-  // --- Sensor subscriptions ---
-  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
-  StreamSubscription<MagnetometerEvent>? _magnetometerSubscription;
+  final Color emeraldAccent = const Color(0xFF00FF88);
+  late AnimationController _pulseController;
 
-  // --- Kaaba Coordinates ---
-  static const double _kaabaLatitude = 21.422487;
-  static const double _kaabaLongitude = 39.826206;
+  bool _isLocating = true;
+  bool _isAligned = false;
+  double _userFineTune = 0.0;
 
-  // --- Variables to hold sensor data for fusion ---
-  Vector3? _gravity;
-  Vector3? _magnetic;
+  double? _qiblaBearing;
+  double? _currentHeading;
+  double? _distanceToKaaba;
+
+  final List<double> _accel = [0, 0, 0];
+  final List<double> _mag = [0, 0, 0];
+
+  // ULTRA-SENSITIVE SETTINGS
+  final List<double> _headingHistory = [];
+  final int _smoothingWindow = 3; // Minimal window for raw speed
+
+  StreamSubscription? _magSub;
+  StreamSubscription? _accelSub;
 
   @override
   void initState() {
     super.initState();
-    _permissionsFuture = _requestAndCheckPermissions();
+    _pulseController = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 2)
+    )..repeat(reverse: true);
+    _hydrateAndStart();
   }
 
-  @override
-  void dispose() {
-    _accelerometerSubscription?.cancel();
-    _magnetometerSubscription?.cancel();
-    super.dispose();
+  // ---------------------------------------------------------------------------
+  // 2. INSTANT-ON LOGIC (CACHING)
+  // ---------------------------------------------------------------------------
+  Future<void> _hydrateAndStart() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userFineTune = prefs.getDouble('fine_tune') ?? 0.0;
+      _qiblaBearing = prefs.getDouble('cached_bearing');
+      _distanceToKaaba = prefs.getDouble('cached_distance');
+      if (_qiblaBearing != null) _isLocating = false;
+    });
+    _startEngine();
   }
 
-  late Future<bool> _permissionsFuture;
-
-  Future<bool> _requestAndCheckPermissions() async {
-    var locationStatus = await Permission.location.status;
-    var sensorStatus = await Permission.sensors.status;
-
-    if (locationStatus.isGranted && sensorStatus.isGranted) {
-      return true;
-    }
-
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.location,
-      Permission.sensors,
-    ].request();
-
-    return statuses[Permission.location]?.isGranted ?? false &&
-        statuses[Permission.sensors]!.isGranted ?? false;
-  }
-
-  Future<void> _getCurrentLocation() async {
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          setState(() {
-            _statusMessage = "Location services are disabled.";
-            _isFetchingLocation = false;
-          });
-        }
-        return;
-      }
-
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 20),
+  Future<void> _startEngine() async {
+    var status = await Permission.locationWhenInUse.request();
+    if (status.isGranted) {
+      _startSensors();
+      Position pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.bestForNavigation
       );
-
-      if (mounted) {
-        setState(() {
-          _userPosition = position;
-          _isFetchingLocation = false;
-          _qiblaDirection =
-              _calculateQiblaBearing(position.latitude, position.longitude);
-          _statusMessage = "Getting device direction...";
-        });
-        _startSensorFusion();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _statusMessage = "Failed to get location: $e";
-          _isFetchingLocation = false;
-        });
-      }
+      _calculateAndStore(pos);
     }
   }
 
-  double _calculateQiblaBearing(double lat, double lon) {
-    const double kaabaLat = _kaabaLatitude * pi / 180;
-    const double kaabaLon = _kaabaLongitude * pi / 180;
-    final double userLat = lat * pi / 180;
-    final double userLon = lon * pi / 180;
+  void _calculateAndStore(Position pos) async {
+    final prefs = await SharedPreferences.getInstance();
+    double lat1 = pos.latitude * (math.pi / 180);
+    double lon1 = pos.longitude * (math.pi / 180);
+    double lat2 = _kaabaLat * (math.pi / 180);
+    double lon2 = _kaabaLon * (math.pi / 180);
 
-    final double dLon = kaabaLon - userLon;
+    double dLon = lon2 - lon1;
+    double y = math.sin(dLon) * math.cos(lat2);
+    double x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
 
-    final double y = sin(dLon) * cos(kaabaLat);
-    final double x = cos(userLat) * sin(kaabaLat) -
-        sin(userLat) * cos(kaabaLat) * cos(dLon);
+    double bearing = (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+    double dist = Geolocator.distanceBetween(pos.latitude, pos.longitude, _kaabaLat, _kaabaLon) / 1000;
 
-    double bearing = atan2(y, x) * 180 / pi;
-    bearing = (bearing + 360) % 360;
-    return bearing;
+    prefs.setDouble('cached_bearing', bearing);
+    prefs.setDouble('cached_distance', dist);
+
+    setState(() {
+      _qiblaBearing = bearing;
+      _distanceToKaaba = dist;
+      _isLocating = false;
+    });
   }
 
-  void _startSensorFusion() {
-    const samplingPeriod = Duration(milliseconds: 100);
-
-    _accelerometerSubscription =
-        accelerometerEventStream(samplingPeriod: samplingPeriod).listen((event) {
-          // Low-pass filter to isolate gravity
-          _gravity = Vector3(
-            (_gravity?.x ?? 0) * 0.8 + event.x * 0.2,
-            (_gravity?.y ?? 0) * 0.8 + event.y * 0.2,
-            (_gravity?.z ?? 0) * 0.8 + event.z * 0.2,
-          );
-          _calculateAzimuth();
-        });
-
-    _magnetometerSubscription =
-        magnetometerEventStream(samplingPeriod: samplingPeriod).listen((event) {
-          // Low-pass filter for magnetic field
-          _magnetic = Vector3(
-            (_magnetic?.x ?? 0) * 0.8 + event.x * 0.2,
-            (_magnetic?.y ?? 0) * 0.8 + event.y * 0.2,
-            (_magnetic?.z ?? 0) * 0.8 + event.z * 0.2,
-          );
-          _calculateAzimuth();
-        });
+  // ---------------------------------------------------------------------------
+  // 3. RAW SENSOR FUSION (ZERO LAG)
+  // ---------------------------------------------------------------------------
+  void _startSensors() {
+    _accelSub = accelerometerEvents.listen((e) {
+      _accel[0] = e.x; _accel[1] = e.y; _accel[2] = e.z;
+    });
+    _magSub = magnetometerEvents.listen((e) {
+      _mag[0] = e.x; _mag[1] = e.y; _mag[2] = e.z;
+      _processOrientation();
+    });
   }
 
-  void _calculateAzimuth() {
-    if (_gravity == null || _magnetic == null) return;
+  void _processOrientation() {
+    vector.Vector3 g = vector.Vector3(_accel[0], _accel[1], _accel[2]);
+    vector.Vector3 m = vector.Vector3(_mag[0], _mag[1], _mag[2]);
 
-    // Normalize the acceleration vector
-    Vector3 g = Vector3.copy(_gravity!);
-    g.normalize();
+    vector.Vector3 e = m.cross(g)..normalize();
+    vector.Vector3 n = g.cross(e)..normalize();
 
-    // Normalize the magnetic field vector
-    Vector3 m = Vector3.copy(_magnetic!);
-    m.normalize();
+    double raw = math.atan2(-e.x, n.x) * (180 / math.pi);
+    double corrected = (raw + _kInternalBias + _userFineTune + 360) % 360;
 
-    // Compute the inclination matrix
-    // This is the standard Android SensorManager implementation
+    // Use a tiny history only to prevent hardware "glitching"
+    _headingHistory.add(corrected);
+    if (_headingHistory.length > _smoothingWindow) _headingHistory.removeAt(0);
 
-    // East vector E = G x M (cross product)
-    double ex = g.y * m.z - g.z * m.y;
-    double ey = g.z * m.x - g.x * m.z;
-    double ez = g.x * m.y - g.y * m.x;
-
-    // Normalize east vector
-    double normE = sqrt(ex * ex + ey * ey + ez * ez);
-    if (normE < 0.1) {
-      // Too unreliable, probably near magnetic pole
-      return;
+    double s = 0, c = 0;
+    for (var h in _headingHistory) {
+      s += math.sin(h * math.pi / 180);
+      c += math.cos(h * math.pi / 180);
     }
-
-    ex /= normE;
-    ey /= normE;
-    ez /= normE;
-
-    // North vector N = E x G
-    double nx = ey * g.z - ez * g.y;
-    double ny = ez * g.x - ex * g.z;
-    double nz = ex * g.y - ey * g.x;
-
-    // Normalize north vector
-    double normN = sqrt(nx * nx + ny * ny + nz * nz);
-    nx /= normN;
-    ny /= normN;
-    nz /= normN;
-
-    // Calculate heading based on device orientation
-    // For portrait mode (phone held upright):
-    double heading;
-
-    // IMPORTANT: Try different formulas based on your device
-    // Formula 1: Most common for portrait mode
-    heading = atan2(ey, ny);
-
-    // Formula 2: Alternative (try if Formula 1 doesn't work)
-    // heading = atan2(ex, nx);
-
-    // Formula 3: Another alternative
-    // heading = atan2(-ny, ey);
-
-    // Convert to degrees
-    double azimuthInDegrees = heading * 180 / pi;
-
-    // Normalize to 0-360 range
-    if (azimuthInDegrees < 0) {
-      azimuthInDegrees += 360;
-    }
-
-    // Apply device-specific calibration offset
-    // You might need to experiment with these values:
-    // 0, 90, 180, or 270
-    // azimuthInDegrees = (azimuthInDegrees + 90) % 360; // Try this
+    double targetHeading = (math.atan2(s, c) * 180 / math.pi + 360) % 360;
 
     if (mounted) {
       setState(() {
-        // Apply smoothing to reduce jitter
-        _deviceAzimuth = _deviceAzimuth * 0.7 + azimuthInDegrees * 0.3;
-        _statusMessage = "Pointing to Qibla";
+        // REMOVED LERP: Update is now 1.0 (Direct/Instant)
+        _currentHeading = targetHeading;
+
+        if (_qiblaBearing != null) {
+          double diff = (_qiblaBearing! - _currentHeading! + 360) % 360;
+          bool aligned = (diff < 5 || diff > 355);
+          if (aligned && !_isAligned) {
+            HapticFeedback.selectionClick();
+            _isAligned = true;
+          } else if (!aligned) {
+            _isAligned = false;
+          }
+        }
       });
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 4. UI BUILDER (DESIGN PRESERVED)
+  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    // Calculate the needle angle
-    // The needle should point to the Qibla direction relative to device heading
-    final double needleAngle = (_qiblaDirection - _deviceAzimuth + 180) % 360;
-    final double normalizedAngle = (needleAngle + 360) % 360;
-
     return Scaffold(
-      backgroundColor: Colors.teal[900],
-      appBar: AppBar(
-        title: const Text("Qibla Compass"),
-        backgroundColor: Colors.teal[800],
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: FutureBuilder<bool>(
-        future: _permissionsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 24),
-                  Text("Checking permissions...",
-                      style: TextStyle(color: Colors.white70, fontSize: 16)),
-                ],
-              ),
-            );
-          }
-
-          if (snapshot.hasData && snapshot.data == true) {
-            if (_isFetchingLocation) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _getCurrentLocation();
-              });
-              return const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: Colors.white),
-                    SizedBox(height: 24),
-                    Text("Fetching your location...",
-                        style: TextStyle(color: Colors.white70, fontSize: 16)),
-                  ],
-                ),
-              );
-            }
-            return _buildCompassBody(normalizedAngle);
-          }
-
-          return _buildPermissionDeniedBody();
-        },
-      ),
-    );
-  }
-
-  Widget _buildPermissionDeniedBody() {
-    return Padding(
-      padding: const EdgeInsets.all(32.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      backgroundColor: const Color(0xFF010409),
+      body: Stack(
         children: [
-          const Icon(Icons.location_disabled, size: 80, color: Colors.white54),
-          const SizedBox(height: 24),
-          const Text("Permissions Required", style: TextStyle(
-              color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          const Text(
-              "Location and sensor access is required for accurate Qibla direction.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70)),
-          const SizedBox(height: 32),
-          ElevatedButton.icon(
-            onPressed: () async {
-              await AppSettings.openAppSettings(type: AppSettingsType.settings);
-            },
-            icon: const Icon(Icons.settings),
-            label: const Text("Open Settings"),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.white,
-                foregroundColor: Colors.teal[900]),
+          _buildAtmosphere(),
+          SafeArea(
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
+                _buildMinimalHeader(),
+                const Spacer(),
+                _buildPremiumCompass(),
+                const Spacer(),
+                _buildGlassCards(),
+                const SizedBox(height: 30),
+              ],
+            ),
           ),
+          _buildSecretTrigger(),
         ],
       ),
     );
   }
 
-  Widget _buildCompassBody(double angle) {
+  Widget _buildAtmosphere() {
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, _) => Container(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(0, -0.2),
+            radius: 1.4,
+            colors: [
+              _isAligned
+                  ? emeraldAccent.withOpacity(0.08 * _pulseController.value)
+                  : Colors.amber.withOpacity(0.03),
+              const Color(0xFF010409),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMinimalHeader() {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(
-          _statusMessage,
-          style: const TextStyle(color: Colors.white70, fontSize: 16),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 32),
-        SizedBox(
-          height: 320,
-          width: 320,
-          child: RepaintBoundary(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0, end: angle),
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeOutQuart,
-              builder: (context, value, child) {
-                return CustomPaint(
-                  painter: QiblaCompassPainter(qiblaAngle: value, qiblaDirection: _qiblaDirection, deviceAzimuth: _deviceAzimuth),
-                );
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 32),
-        if (_userPosition != null) ...[
-          Card(
-            color: Colors.teal[800],
-            margin: const EdgeInsets.symmetric(horizontal: 32),
-            child: ListTile(
-              leading: const Icon(Icons.my_location, color: Colors.white70),
-              title: Text(
-                "Qibla: ${_qiblaDirection.toStringAsFixed(
-                    1)}° | Device: ${_deviceAzimuth.toStringAsFixed(1)}°",
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-              ),
-              subtitle: Text(
-                "Lat: ${_userPosition!.latitude.toStringAsFixed(
-                    4)}, Lon: ${_userPosition!.longitude.toStringAsFixed(4)}",
-                style: const TextStyle(color: Colors.white70),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              "Hold phone flat and rotate slowly. Keep away from metal objects.",
-              style: TextStyle(color: Colors.white60, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
+        const Text("PRECISION QIBLA",
+            style: TextStyle(letterSpacing: 6, fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white24)),
+        const SizedBox(height: 10),
+        if (_isLocating)
+          const SizedBox(width: 40, child: LinearProgressIndicator(backgroundColor: Colors.transparent, color: Colors.amber)),
       ],
     );
   }
+
+  Widget _buildPremiumCompass() {
+    if (_qiblaBearing == null) return const CircularProgressIndicator(color: Colors.amber);
+
+    final double rotation = (_qiblaBearing! - (_currentHeading ?? 0) + 360) % 360;
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: 320, height: 320,
+          decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: _isAligned ? emeraldAccent.withOpacity(0.1) : Colors.black,
+                  blurRadius: 60, spreadRadius: 5,
+                )
+              ]
+          ),
+        ),
+        Transform.rotate(
+          angle: -(_currentHeading ?? 0) * (math.pi / 180),
+          child: CustomPaint(
+            size: const Size(320, 320),
+            painter: HighDefCompassPainter(isAligned: _isAligned, emerald: emeraldAccent),
+          ),
+        ),
+        Transform.rotate(
+          angle: rotation * (math.pi / 180),
+          child: Column(
+            children: [
+              _buildMosqueIndicator(),
+              const SizedBox(height: 220),
+            ],
+          ),
+        ),
+        _buildCentralHUD(),
+      ],
+    );
+  }
+
+  Widget _buildMosqueIndicator() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: _isAligned ? emeraldAccent : const Color(0xFF161B22),
+          border: Border.all(
+              color: _isAligned ? Colors.white : Colors.amber.withOpacity(0.3),
+              width: 2
+          ),
+          boxShadow: [
+            if (_isAligned) BoxShadow(color: emeraldAccent, blurRadius: 20, spreadRadius: 2)
+          ]
+      ),
+      child: Icon(Icons.mosque, color: _isAligned ? Colors.black : Colors.amber, size: 26),
+    );
+  }
+
+  Widget _buildCentralHUD() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          "${_currentHeading?.toStringAsFixed(0)}°",
+          style: TextStyle(
+              fontSize: 62,
+              fontWeight: FontWeight.w100,
+              color: _isAligned ? emeraldAccent : Colors.white
+          ),
+        ),
+        Text(
+          _isAligned ? "LOCKED" : "SCANNING",
+          style: TextStyle(
+              letterSpacing: 4,
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: _isAligned ? emeraldAccent : Colors.white24
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGlassCards() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        children: [
+          _glassTile("DISTANCE", "${_distanceToKaaba?.toStringAsFixed(0) ?? '...'} KM", Icons.near_me_outlined),
+          const SizedBox(width: 15),
+          _glassTile("QIBLA", "${_qiblaBearing?.toStringAsFixed(1) ?? '...'}°", Icons.explore_outlined),
+        ],
+      ),
+    );
+  }
+
+  Widget _glassTile(String label, String val, IconData icon) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: Colors.amber.withOpacity(0.6)),
+            const SizedBox(height: 12),
+            Text(label, style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            Text(val, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSecretTrigger() {
+    return Positioned(
+      top: 0, right: 0,
+      child: GestureDetector(
+        onDoubleTap: _showSecretCalibration,
+        child: Container(width: 80, height: 80, color: Colors.transparent),
+      ),
+    );
+  }
+
+  void _showSecretCalibration() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0D1117),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setST) => Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("HARDWARE TUNING", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
+              Slider(
+                value: _userFineTune, min: -15, max: 15,
+                activeColor: Colors.amber,
+                onChanged: (v) async {
+                  setState(() => _userFineTune = v); setST(() {});
+                  (await SharedPreferences.getInstance()).setDouble('fine_tune', v);
+                },
+              ),
+              Text("${_userFineTune.toStringAsFixed(1)}° Manual Offset"),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _magSub?.cancel(); _accelSub?.cancel();
+    _pulseController.dispose();
+    super.dispose();
+  }
 }
 
-// CORRECT QiblaCompassPainter class definition
-class QiblaCompassPainter extends CustomPainter {
-  final double qiblaAngle;
-  final double qiblaDirection;
-  final double deviceAzimuth;
-
-  QiblaCompassPainter({required this.qiblaAngle, required this.qiblaDirection, required this.deviceAzimuth});
+class HighDefCompassPainter extends CustomPainter {
+  final bool isAligned;
+  final Color emerald;
+  HighDefCompassPainter({required this.isAligned, required this.emerald});
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = min(size.width, size.height) / 2 * 0.95;
+    final radius = size.width / 2;
 
-    // --- GLOW EFFECT ---
-    final double difference = (qiblaDirection - deviceAzimuth + 360) % 360;
-    final bool isAligned = difference <= 1.0 || difference >= 359.0;
+    for (int i = 0; i < 360; i += 2) {
+      final double angle = (i - 90) * (math.pi / 180);
+      final bool isMajor = i % 30 == 0;
+      final bool isCardinal = i % 90 == 0;
 
-    final Paint circlePaint = Paint()
-      ..color = isAligned ? Colors.green.withOpacity(0.5) : Colors.white.withOpacity(0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = isAligned ? 8.0 : 4.0; // Thicker stroke for glow
+      double tickLen = isCardinal ? 18 : (isMajor ? 12 : 5);
+      final paint = Paint()
+        ..color = isCardinal
+            ? (i == 0 ? Colors.redAccent : (isAligned ? emerald : Colors.white))
+            : (isMajor ? Colors.white54 : Colors.white.withOpacity(0.1))
+        ..strokeWidth = isCardinal ? 2.5 : (isMajor ? 1.5 : 0.5)
+        ..strokeCap = StrokeCap.round;
 
-    final Paint innerCirclePaint = Paint()
-      ..color = Colors.white.withOpacity(0.3)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    // Outer circle
-    canvas.drawCircle(center, radius, circlePaint);
-    canvas.drawCircle(center, radius * 0.9, innerCirclePaint);
-
-    // Degree marks
-    for (int i = 0; i < 360; i += 15) {
-      final double angle = i * pi / 180;
-      final Offset start = center + Offset(sin(angle), -cos(angle)) * radius * 0.9;
-      final Offset end = center + Offset(sin(angle), -cos(angle)) * radius;
       canvas.drawLine(
-        start,
-        end,
-        Paint()
-          ..color = Colors.white.withOpacity(i % 90 == 0 ? 0.8 : 0.4)
-          ..strokeWidth = i % 90 == 0 ? 4 : 2,
+        Offset(center.dx + (radius - tickLen) * math.cos(angle), center.dy + (radius - tickLen) * math.sin(angle)),
+        Offset(center.dx + radius * math.cos(angle), center.dy + radius * math.sin(angle)),
+        paint,
       );
+
+      if (isMajor) {
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: i == 0 ? "N" : (i == 90 ? "E" : (i == 180 ? "S" : (i == 270 ? "W" : "$i"))),
+            style: TextStyle(
+                color: i == 0 ? Colors.redAccent : Colors.white38,
+                fontSize: isCardinal ? 14 : 10,
+                fontWeight: FontWeight.bold
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        canvas.save();
+        canvas.translate(
+          center.dx + (radius - 40) * math.cos(angle),
+          center.dy + (radius - 40) * math.sin(angle),
+        );
+        canvas.rotate(i * (math.pi / 180));
+        textPainter.paint(canvas, Offset(-textPainter.width / 2, -textPainter.height / 2));
+        canvas.restore();
+      }
     }
-
-    // Cardinal labels
-    _drawText(canvas, center, "N", 0, radius * 1.1, Colors.white, 20);
-    _drawText(canvas, center, "E", 90, radius * 1.1, Colors.white70, 16);
-    _drawText(canvas, center, "S", 180, radius * 1.1, Colors.white70, 16);
-    _drawText(canvas, center, "W", 270, radius * 1.1, Colors.white70, 16);
-
-    // --- KAABA SYMBOL ---
-    final double qiblaAngleRadians = qiblaDirection * pi / 180;
-    final Offset kaabaOffset = center + Offset(sin(qiblaAngleRadians), -cos(qiblaAngleRadians)) * radius * 0.7;
-
-    // Qibla Needle
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(qiblaAngle * pi / 180);
-
-    // Red Qibla direction (top half)
-    final Path qiblaPath = Path()
-      ..moveTo(0, -radius * 0.85)
-      ..lineTo(-radius * 0.12, radius * 0.15)
-      ..lineTo(radius * 0.12, radius * 0.15)
-      ..close();
-
-    canvas.drawPath(qiblaPath, Paint()..color = Colors.redAccent);
-
-    // White opposite direction
-    final Path oppositePath = Path()
-      ..moveTo(0, radius * 0.5)
-      ..lineTo(-radius * 0.08, radius * 0.1)
-      ..lineTo(radius * 0.08, radius * 0.1)
-      ..close();
-
-    canvas.drawPath(oppositePath, Paint()..color = Colors.white.withOpacity(0.7));
-
-    // Center circle
-    canvas.drawCircle(Offset.zero, radius * 0.12, Paint()..color = Colors.black54);
-    canvas.drawCircle(Offset.zero, radius * 0.08, Paint()..color = Colors.redAccent);
-
-    canvas.restore();
   }
-
-  void _drawText(Canvas canvas, Offset center, String text, double angleDegrees, double radius, Color color, double fontSize) {
-    final double angle = angleDegrees * pi / 180;
-    final Offset position = center + Offset(sin(angle), -cos(angle)) * radius;
-
-    final TextPainter tp = TextPainter(textDirection: TextDirection.ltr);
-    tp.text = TextSpan(
-      text: text,
-      style: TextStyle(color: color, fontSize: fontSize, fontWeight: FontWeight.bold),
-    );
-    tp.layout();
-    tp.paint(canvas, position - Offset(tp.width / 2, tp.height / 2));
-  }
-
-  @override
-  bool shouldRepaint(covariant QiblaCompassPainter oldDelegate) {
-    return oldDelegate.qiblaAngle != qiblaAngle ||
-        oldDelegate.qiblaDirection != qiblaDirection ||
-        oldDelegate.deviceAzimuth != deviceAzimuth;
-  }
+  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
