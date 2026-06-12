@@ -1,9 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert';
 
 import '../../core/services/settings_service.dart';
+import 'last_read_indicator.dart';
 
 class VerseCard extends StatefulWidget {
   final int surahNumber;
@@ -21,6 +22,7 @@ class VerseCard extends StatefulWidget {
   final VoidCallback onCopy;
   final VoidCallback onBookmark;
   final Map<String, dynamic> cachedData;
+  final String surahName;
 
   const VerseCard({
     super.key,
@@ -39,6 +41,7 @@ class VerseCard extends StatefulWidget {
     required this.onCopy,
     required this.onBookmark,
     required this.cachedData,
+    this.surahName = '',
   });
 
   @override
@@ -92,8 +95,6 @@ class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMix
   }
 
   Future<void> _loadAdditionalDataIfNeeded() async {
-    // FIX: We need to get the settings here as well to check what to load.
-    // Using listen: false is appropriate here as it's an async action, not a build.
     final settingsService = Provider.of<SettingsService>(context, listen: false);
     final displaySettings = settingsService.getSurahDisplaySettings(widget.language, widget.isTafseer);
 
@@ -107,7 +108,6 @@ class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMix
     final Map<String, String> newTranslations = {};
     final Map<String, String> newTransliterations = {};
 
-    // Load additional translations
     for (final entry in displaySettings.additionalTranslations.entries) {
       if (!entry.value) continue;
 
@@ -134,7 +134,6 @@ class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMix
       }
     }
 
-    // Load additional transliterations (only English supported)
     for (final entry in displaySettings.additionalTransliterations.entries) {
       if (!entry.value) continue;
 
@@ -204,9 +203,46 @@ class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMix
 
   void _toggleHighlight() {
     HapticFeedback.lightImpact();
-    setState(() {
-      _isHighlighted = !_isHighlighted;
-    });
+    setState(() => _isHighlighted = !_isHighlighted);
+  }
+
+  // TOGGLE: Mark/Unmark as Last Read
+  void _toggleMarkAsLastRead() {
+    final settings = Provider.of<SettingsService>(context, listen: false);
+
+    final isCurrentlyMarked = settings.isQuranVerseLastRead(
+      widget.surahNumber,
+      widget.verseNumber,
+      isTafseer: widget.isTafseer,
+    );
+
+    if (isCurrentlyMarked) {
+      // UNMARK
+      settings.clearLastReadQuran(widget.surahNumber, isTafseer: widget.isTafseer);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Last read mark removed'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      // MARK
+      settings.markQuranLastRead(
+        surahNumber: widget.surahNumber,
+        verseNumber: widget.verseNumber,
+        surahName: widget.surahName.isNotEmpty ? widget.surahName : 'Surah ${widget.surahNumber}',
+        language: widget.language,
+        isTafseer: widget.isTafseer,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Marked verse ${widget.verseNumber} as last read'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   String _capitalize(String text) {
@@ -218,13 +254,19 @@ class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMix
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // FIX: Wrap the entire card in a Consumer<SettingsService>.
-    // This ensures the card rebuilds whenever settings change.
     return Consumer<SettingsService>(
       builder: (context, settingsService, child) {
-        // Get the latest settings from the service
         final displaySettings = settingsService.getSurahDisplaySettings(widget.language, widget.isTafseer);
         final bool tafseerExpanded = widget.isTafseer ? true : _isExpanded;
+
+        final bool isLastRead = settingsService.isQuranVerseLastRead(
+          widget.surahNumber,
+          widget.verseNumber,
+          isTafseer: widget.isTafseer,
+        );
+        final lastReadData = isLastRead
+            ? settingsService.getLastReadQuran(widget.surahNumber, isTafseer: widget.isTafseer)
+            : null;
 
         return AnimatedBuilder(
           animation: _scaleAnimation,
@@ -232,6 +274,9 @@ class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMix
             return Transform.scale(
               scale: _scaleAnimation.value,
               child: GestureDetector(
+                onTapDown: _onTapDown,
+                onTapUp: _onTapUp,
+                onTapCancel: _onTapCancel,
                 onLongPress: _toggleHighlight,
                 child: Card(
                   margin: const EdgeInsets.only(bottom: 16.0),
@@ -243,289 +288,325 @@ class _VerseCardState extends State<VerseCard> with SingleTickerProviderStateMix
                         ? const BorderSide(color: _highlightBorderColor, width: 2.0)
                         : BorderSide.none,
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Verse number + actions row
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _isHighlighted
-                                    ? _highlightBorderColor.withOpacity(0.3)
-                                    : theme.colorScheme.primary.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8.0),
-                              ),
-                              child: Text(
-                                '${widget.surahNumber}:${widget.verseNumber}',
-                                style: TextStyle(
-                                  fontSize: 14 * widget.fontScale,
-                                  fontWeight: FontWeight.bold,
-                                  color: _isHighlighted ? _highlightBorderColor : theme.colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                            const Spacer(),
-                            if (_isHighlighted)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                child: Text(
-                                  'AzaharApps',
-                                  style: TextStyle(
-                                    fontSize: 12 * widget.fontScale,
-                                    color: _highlightBorderColor,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            IconButton(
-                              icon: Icon(
-                                widget.isBookmarked ? Icons.star : Icons.star_border,
-                                color: widget.isBookmarked
-                                    ? Colors.amber
-                                    : theme.colorScheme.onSurface.withOpacity(0.6),
-                              ),
-                              onPressed: widget.onBookmark,
-                            ),
-                            PopupMenuButton<String>(
-                              icon: Icon(Icons.more_vert, color: theme.colorScheme.onSurface.withOpacity(0.6)),
-                              onSelected: (value) {
-                                if (value == 'share') widget.onShare();
-                                if (value == 'copy') widget.onCopy();
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(value: 'share', child: Row(children: [Icon(Icons.share, size: 20), SizedBox(width: 8), Text('Share')])),
-                                const PopupMenuItem(value: 'copy', child: Row(children: [Icon(Icons.copy, size: 20), SizedBox(width: 8), Text('Copy')])),
-                              ],
-                            ),
-                          ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (isLastRead && lastReadData != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, right: 16, top: 16),
+                          child: LastReadIndicator(
+                            itemName: lastReadData['itemName'] ?? 'Surah ${widget.surahNumber}',
+                            itemNumber: widget.verseNumber,
+                            timestamp: lastReadData['timestamp'] ?? 0,
+                            fontScale: widget.fontScale,
+                            itemTypeLabel: 'Verse',
+                          ),
                         ),
-                        const SizedBox(height: 12),
 
-                        // Arabic Text
-                        if (displaySettings.showArabic && widget.arabic.isNotEmpty) ...[
-                          Text(
-                            widget.arabic,
-                            style: TextStyle(
-                              fontSize: 24 * widget.fontScale,
-                              fontFamily: 'Uthmanic',
-                              height: 1.6,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                            textAlign: TextAlign.right,
-                            textDirection: TextDirection.rtl,
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // Primary Transliteration
-                        if (displaySettings.showTransliteration && widget.transliteration.isNotEmpty) ...[
-                          Text(
-                            widget.transliteration,
-                            style: TextStyle(
-                              fontSize: 18 * widget.fontScale,
-                              fontStyle: FontStyle.italic,
-                              height: 1.5,
-                              color: theme.colorScheme.primary.withOpacity(0.9),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Primary Translation
-                        if (displaySettings.showTranslation && widget.translation.isNotEmpty) ...[
-                          Text(
-                            widget.translation,
-                            style: TextStyle(
-                              fontSize: 17 * widget.fontScale,
-                              height: 1.6,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Loading indicator for additional data
-                        if (_isLoadingAdditional)
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
                               children: [
-                                SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: theme.colorScheme.primary,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: _isHighlighted
+                                        ? _highlightBorderColor.withOpacity(0.3)
+                                        : theme.colorScheme.primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  child: Text(
+                                    '${widget.surahNumber}:${widget.verseNumber}',
+                                    style: TextStyle(
+                                      fontSize: 14 * widget.fontScale,
+                                      fontWeight: FontWeight.bold,
+                                      color: _isHighlighted ? _highlightBorderColor : theme.colorScheme.primary,
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'Loading additional translations...',
-                                  style: TextStyle(
-                                    fontSize: 14 * widget.fontScale,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                        // Additional Transliterations
-                        ..._additionalTransliterations.entries.map((entry) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 12.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${_capitalize(entry.key)} Transliteration',
-                                  style: TextStyle(
-                                    fontSize: 13 * widget.fontScale,
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  entry.value,
-                                  style: TextStyle(
-                                    fontSize: 16 * widget.fontScale,
-                                    fontStyle: FontStyle.italic,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.9),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-
-                        // Additional Translations
-                        ..._additionalTranslations.entries.map((entry) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 12.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${_capitalize(entry.key)} Translation',
-                                  style: TextStyle(
-                                    fontSize: 13 * widget.fontScale,
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  entry.value,
-                                  style: TextStyle(
-                                    fontSize: 16 * widget.fontScale,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.9),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-
-                        // Footnotes
-                        if (widget.footnotes.isNotEmpty) ...[
-                          GestureDetector(
-                            onTap: () => setState(() => _showFootnotes = !_showFootnotes),
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.secondary.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.info_outline, size: 18, color: theme.colorScheme.secondary),
-                                  const SizedBox(width: 10),
-                                  Text('Footnotes', style: TextStyle(fontSize: 14 * widget.fontScale, color: theme.colorScheme.secondary)),
-                                  const Spacer(),
-                                  Icon(_showFootnotes ? Icons.expand_less : Icons.expand_more, size: 18, color: theme.colorScheme.secondary),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (_showFootnotes)
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.secondary.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: theme.colorScheme.secondary.withOpacity(0.3)),
-                              ),
-                              child: Text(
-                                widget.footnotes,
-                                style: TextStyle(fontSize: 14 * widget.fontScale, color: theme.colorScheme.onSurface.withOpacity(0.85)),
-                              ),
-                            ),
-                        ],
-
-                        // Tafseer
-                        if (widget.tafseer.isNotEmpty && (widget.isTafseer || displaySettings.showTafseer)) ...[
-                          GestureDetector(
-                            onTap: widget.isTafseer ? null : () => setState(() => _isExpanded = !_isExpanded),
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              margin: const EdgeInsets.only(top: 12),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        'Tafseer',
-                                        style: TextStyle(
-                                          fontSize: 17 * widget.fontScale,
-                                          fontWeight: FontWeight.bold,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                      ),
-                                      const Spacer(),
-                                      if (!widget.isTafseer)
-                                        Icon(
-                                          _isExpanded ? Icons.expand_less : Icons.expand_more,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                    ],
-                                  ),
-                                  if (tafseerExpanded) ...[
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      widget.tafseer,
+                                const Spacer(),
+                                if (_isHighlighted)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: Text(
+                                      'AzaharApps',
                                       style: TextStyle(
-                                        fontSize: 16 * widget.fontScale,
-                                        height: 1.6,
-                                        color: theme.colorScheme.onSurface,
+                                        fontSize: 12 * widget.fontScale,
+                                        color: _highlightBorderColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                IconButton(
+                                  icon: Icon(
+                                    widget.isBookmarked ? Icons.star : Icons.star_border,
+                                    color: widget.isBookmarked
+                                        ? Colors.amber
+                                        : theme.colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                                  onPressed: widget.onBookmark,
+                                ),
+                                PopupMenuButton<String>(
+                                  icon: Icon(Icons.more_vert, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                                  onSelected: (value) {
+                                    if (value == 'share') widget.onShare();
+                                    if (value == 'copy') widget.onCopy();
+                                    if (value == 'mark_last_read') _toggleMarkAsLastRead();
+                                  },
+                                  itemBuilder: (context) => [
+                                    const PopupMenuItem(
+                                      value: 'share',
+                                      child: Row(children: [Icon(Icons.share, size: 20), SizedBox(width: 8), Text('Share')]),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'copy',
+                                      child: Row(children: [Icon(Icons.copy, size: 20), SizedBox(width: 8), Text('Copy')]),
+                                    ),
+                                    const PopupMenuDivider(),
+                                    PopupMenuItem(
+                                      value: 'mark_last_read',
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.bookmark_add_rounded,
+                                            size: 20,
+                                            color: isLastRead ? Colors.red : Colors.blue,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            isLastRead ? 'Unmark as Last Read' : 'Mark as Last Read',
+                                            style: TextStyle(
+                                              color: isLastRead ? Colors.red : null,
+                                              fontWeight: isLastRead ? FontWeight.w600 : null,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ],
-                    ),
+                            const SizedBox(height: 12),
+
+                            if (displaySettings.showArabic && widget.arabic.isNotEmpty) ...[
+                              Text(
+                                widget.arabic,
+                                style: TextStyle(
+                                  fontSize: 24 * widget.fontScale,
+                                  fontFamily: 'Uthmanic',
+                                  height: 1.6,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                                textAlign: TextAlign.right,
+                                textDirection: TextDirection.rtl,
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+
+                            if (displaySettings.showTransliteration && widget.transliteration.isNotEmpty) ...[
+                              Text(
+                                widget.transliteration,
+                                style: TextStyle(
+                                  fontSize: 18 * widget.fontScale,
+                                  fontStyle: FontStyle.italic,
+                                  height: 1.5,
+                                  color: theme.colorScheme.primary.withOpacity(0.9),
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+
+                            if (displaySettings.showTranslation && widget.translation.isNotEmpty) ...[
+                              Text(
+                                widget.translation,
+                                style: TextStyle(
+                                  fontSize: 17 * widget.fontScale,
+                                  height: 1.6,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+
+                            if (_isLoadingAdditional)
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary.withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      'Loading additional translations...',
+                                      style: TextStyle(
+                                        fontSize: 14 * widget.fontScale,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                            ..._additionalTransliterations.entries.map((entry) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${_capitalize(entry.key)} Transliteration',
+                                      style: TextStyle(
+                                        fontSize: 13 * widget.fontScale,
+                                        fontWeight: FontWeight.bold,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      entry.value,
+                                      style: TextStyle(
+                                        fontSize: 16 * widget.fontScale,
+                                        fontStyle: FontStyle.italic,
+                                        color: theme.colorScheme.onSurface.withOpacity(0.9),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+
+                            ..._additionalTranslations.entries.map((entry) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${_capitalize(entry.key)} Translation',
+                                      style: TextStyle(
+                                        fontSize: 13 * widget.fontScale,
+                                        fontWeight: FontWeight.bold,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      entry.value,
+                                      style: TextStyle(
+                                        fontSize: 16 * widget.fontScale,
+                                        color: theme.colorScheme.onSurface.withOpacity(0.9),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+
+                            if (widget.footnotes.isNotEmpty) ...[
+                              GestureDetector(
+                                onTap: () => setState(() => _showFootnotes = !_showFootnotes),
+                                child: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  margin: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.secondary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.info_outline, size: 18, color: theme.colorScheme.secondary),
+                                      const SizedBox(width: 10),
+                                      Text('Footnotes', style: TextStyle(fontSize: 14 * widget.fontScale, color: theme.colorScheme.secondary)),
+                                      const Spacer(),
+                                      Icon(_showFootnotes ? Icons.expand_less : Icons.expand_more, size: 18, color: theme.colorScheme.secondary),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (_showFootnotes)
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.secondary.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: theme.colorScheme.secondary.withOpacity(0.3)),
+                                  ),
+                                  child: Text(
+                                    widget.footnotes,
+                                    style: TextStyle(fontSize: 14 * widget.fontScale, color: theme.colorScheme.onSurface.withOpacity(0.85)),
+                                  ),
+                                ),
+                            ],
+
+                            if (widget.tafseer.isNotEmpty && (widget.isTafseer || displaySettings.showTafseer)) ...[
+                              GestureDetector(
+                                onTap: widget.isTafseer ? null : () => setState(() => _isExpanded = !_isExpanded),
+                                child: Container(
+                                  padding: const EdgeInsets.all(14),
+                                  margin: const EdgeInsets.only(top: 12),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'Tafseer',
+                                            style: TextStyle(
+                                              fontSize: 17 * widget.fontScale,
+                                              fontWeight: FontWeight.bold,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          if (!widget.isTafseer)
+                                            Icon(
+                                              _isExpanded ? Icons.expand_less : Icons.expand_more,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                        ],
+                                      ),
+                                      if (tafseerExpanded) ...[
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          widget.tafseer,
+                                          style: TextStyle(
+                                            fontSize: 16 * widget.fontScale,
+                                            height: 1.6,
+                                            color: theme.colorScheme.onSurface,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

@@ -1,8 +1,8 @@
 // lib/presentation/widgets/dynamic_horizontal_header.dart
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../core/providers/prayer_times_provider.dart';
 
 class DynamicHorizontalHeader extends StatefulWidget {
   final String title;
@@ -22,32 +22,19 @@ class DynamicHorizontalHeader extends StatefulWidget {
 
 class _DynamicHorizontalHeaderState extends State<DynamicHorizontalHeader>
     with SingleTickerProviderStateMixin {
-
-  // Hadith Data Fields
-  List<dynamic> _hadiths = [];
-  Map<String, dynamic>? _currentHadith;
-  bool _isLoading = true;
-
-  // Animation Fields
   late AnimationController _controller;
   late Animation<double> _animation;
   bool _isExpanded = false;
 
-  // Size Constants
   static const Duration _animationDuration = Duration(milliseconds: 350);
   static const double _collapsedHeight = 40.0;
-
-  // Increased size constants
-  static const double _expandedHeight = 320.0;
-  static const double _expandedWidth = 400.0;
-
+  static const double _expandedHeight = 220.0;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: _animationDuration);
     _animation = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
-    _loadHadithData();
   }
 
   @override
@@ -56,151 +43,103 @@ class _DynamicHorizontalHeaderState extends State<DynamicHorizontalHeader>
     super.dispose();
   }
 
-  // --- Data Loading & Selection (No changes) ---
-
-  Future<void> _loadHadithData() async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      final String jsonString = await rootBundle.loadString('assets/data/sahih_al_bukhari.json');
-      final Map<String, dynamic> data = json.decode(jsonString);
-
-      _hadiths = data['hadiths'] ?? [];
-
-      setState(() {
-        _isLoading = false;
-        _selectRandomHadith();
-      });
-
-    } catch (e) {
-      debugPrint('Error loading Hadith data: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _currentHadith = {'english': 'Failed to load Hadith data.', 'number': 0};
-        });
-      }
-    }
-  }
-
-  void _selectRandomHadith() {
-    if (_hadiths.isNotEmpty) {
-      final random = Random();
-      final index = random.nextInt(_hadiths.length);
-      setState(() {
-        _currentHadith = _hadiths[index];
-      });
-    } else {
-      setState(() {
-        _currentHadith = {'english': 'Hadith list is empty.', 'number': 0};
-      });
-    }
-  }
-
   void _toggleExpansion() {
-    if (_isLoading) return;
-
     if (_isExpanded) {
       _controller.reverse();
     } else {
-      _selectRandomHadith();
       _controller.forward();
     }
-
-    setState(() {
-      _isExpanded = !_isExpanded;
-    });
+    setState(() => _isExpanded = !_isExpanded);
   }
 
-  // --- Widget Builders (No changes) ---
+  void _goToPrayerTimes() {
+    Navigator.pushNamed(context, '/namaz');
+    _controller.reverse();
+    setState(() => _isExpanded = false);
+  }
 
-  Widget _buildContent() {
-    if (_isLoading) {
-      return Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          ),
-        ),
-      );
+  /// Dampened font scale for island internals.
+  /// Maps user fontScale ~[0.8..1.5] → island fs ~[0.85..1.1]
+  /// so content never outgrows the fixed-height container.
+  double get _islandFs {
+    return max(0.85, min(1.1, 0.85 + (widget.fontScale - 0.8) * 0.25));
+  }
+
+  String _formatTime(String? time24) {
+    if (time24 == null || time24.isEmpty) return '--:--';
+    try {
+      final parts = time24.split(':');
+      final hour = int.parse(parts[0]);
+      final minute = parts[1];
+      final hour12 = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+      final ampm = hour >= 12 ? 'PM' : 'AM';
+      return '$hour12:$minute $ampm';
+    } catch (_) {
+      return time24;
     }
+  }
 
-    final hadithNumber = _currentHadith?['number']?.toString() ?? 'N/A';
-    final hadithText = _currentHadith?['english']?.toString() ?? 'No text available.';
-    final hadithAr = _currentHadith?['arabic']?.toString() ?? 'N/A';
+  String _getCountdown(String? time24) {
+    if (time24 == null || time24.isEmpty) return 'Calculating...';
+    try {
+      final parts = time24.split(':');
+      final hour = int.parse(parts[0]);
+      final minute = int.parse(parts[1]);
 
-    // Content for the expanded island
-    final expandedContent = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Arabic Text (Optional, small preview)
-          if (hadithAr.isNotEmpty)
-            Text(
-              hadithAr,
-              style: TextStyle(
-                fontSize: 16 * widget.fontScale,
-                color: Colors.white.withOpacity(0.9),
-                fontFamily: 'Uthmanic',
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-            ),
-          const SizedBox(height: 8),
+      final now = DateTime.now();
+      var prayerDateTime = DateTime(now.year, now.month, now.day, hour, minute);
 
-          // English Hadith Text
-          Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Text(
-                hadithText,
-                style: TextStyle(
-                  fontSize: 14 * widget.fontScale,
-                  color: Colors.white,
-                  height: 1.5,
-                  fontStyle: FontStyle.italic,
-                ),
-                maxLines: null,
-                overflow: TextOverflow.fade,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Hadith Number
-          Text(
-            'Sahih al-Bukhari | Hadith No: $hadithNumber',
-            style: TextStyle(
-              fontSize: 10 * widget.fontScale,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.7),
-            ),
-            textAlign: TextAlign.end,
-          ),
-        ],
-      ),
-    );
+      if (prayerDateTime.isBefore(now)) {
+        prayerDateTime = prayerDateTime.add(const Duration(days: 1));
+      }
 
-    // Content for the collapsed title (Simple indicator)
-    final collapsedContent = Center(
+      final diff = prayerDateTime.difference(now);
+      final hours = diff.inHours;
+      final minutes = diff.inMinutes.remainder(60);
+
+      if (hours > 0) {
+        return '${hours}h ${minutes}m remaining';
+      }
+      return '${minutes}m remaining';
+    } catch (_) {
+      return 'Calculating...';
+    }
+  }
+
+  IconData _getPrayerIcon(String? prayerName) {
+    switch (prayerName?.toLowerCase()) {
+      case 'fajr':
+        return Icons.nightlight_round;
+      case 'dhuhr':
+      case 'zuhr':
+        return Icons.wb_sunny;
+      case 'asr':
+        return Icons.wb_twilight;
+      case 'maghrib':
+        return Icons.nights_stay;
+      case 'isha':
+        return Icons.dark_mode;
+      case 'tahajjud':
+        return Icons.bedtime;
+      default:
+        return Icons.access_time;
+    }
+  }
+
+  Widget _buildCollapsedContent() {
+    final fs = _islandFs;
+    return FittedBox(
+      fit: BoxFit.scaleDown,
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.format_quote,
-            color: Colors.white,
-            size: 20 * widget.fontScale,
-          ),
-          const SizedBox(width: 8),
+          Icon(Icons.mosque, color: Colors.white, size: 16 * fs),
+          const SizedBox(width: 5),
           Text(
-            'Hadith Today',
+            'Next Prayer',
             style: TextStyle(
-              fontSize: 14 * widget.fontScale,
+              fontSize: 12 * fs,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
@@ -208,29 +147,159 @@ class _DynamicHorizontalHeaderState extends State<DynamicHorizontalHeader>
         ],
       ),
     );
+  }
 
-    // Use AnimatedSwitcher for smooth content transition
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: child,
-        );
-      },
-      child: _isExpanded
-          ? KeyedSubtree(key: const ValueKey('expanded_hadith'), child: expandedContent)
-          : KeyedSubtree(key: const ValueKey('collapsed_hadith_title'), child: collapsedContent),
+  Widget _buildExpandedContent(double availableWidth) {
+    final prayerProvider = Provider.of<PrayerTimesProvider>(context);
+    final nextPrayer = prayerProvider.nextPrayer;
+    final nextPrayerName = nextPrayer?.name;
+    final nextPrayerTimeStr = nextPrayer?.time;
+    final fs = _islandFs;
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: SizedBox(
+        width: availableWidth,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Top row: label + close ──
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Upcoming Prayer',
+                    style: TextStyle(
+                      fontSize: 10 * fs,
+                      color: Colors.white.withOpacity(0.7),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _toggleExpansion,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                      child: const Icon(Icons.close, size: 14, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // ── Prayer icon + name + time ──
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      _getPrayerIcon(nextPrayerName),
+                      color: Colors.white,
+                      size: 24 * fs,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          nextPrayerName ?? 'Loading...',
+                          style: TextStyle(
+                            fontSize: 17 * fs,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          _formatTime(nextPrayerTimeStr),
+                          style: TextStyle(
+                            fontSize: 12 * fs,
+                            color: Colors.white.withOpacity(0.8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // ── Countdown bar ──
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.hourglass_top,
+                      color: Colors.white.withOpacity(0.7),
+                      size: 14 * fs,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      _getCountdown(nextPrayerTimeStr),
+                      style: TextStyle(
+                        fontSize: 12 * fs,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // ── Action button ──
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _goToPrayerTimes,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.schedule, color: Color(0xFF2E7D32), size: 16),
+                  label: const Text(
+                    'View All Times',
+                    style: TextStyle(color: Color(0xFF2E7D32), fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Determine the available width for the Dynamic Island
     final screenWidth = MediaQuery.of(context).size.width;
     final double maxIslandWidth = screenWidth - 32.0;
 
-    // Define the color gradient for the expanded island
     final Gradient dynamicGradient = LinearGradient(
       colors: [
         widget.theme.colorScheme.tertiary.withOpacity(0.9),
@@ -246,19 +315,19 @@ class _DynamicHorizontalHeaderState extends State<DynamicHorizontalHeader>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Static Title Part (Left side - Shrinks and disappears)
-          AnimatedBuilder(
-            animation: _animation,
+          // ── Left: title column (shrinks on expand) ──
+          ListenableBuilder(
+            listenable: _animation,
             builder: (context, child) {
-
-              final double scale = Tween<double>(begin: 1.0, end: 0.0).evaluate(_animation);
-              final double opacity = Tween<double>(begin: 1.0, end: 0.0).evaluate(_animation);
+              final double scale =
+              Tween<double>(begin: 1.0, end: 0.0).evaluate(_animation);
+              final double opacity =
+              Tween<double>(begin: 1.0, end: 0.0).evaluate(_animation);
 
               return SizeTransition(
-                sizeFactor: ReverseAnimation(_animation), // Shrink when animation forwards
+                sizeFactor: ReverseAnimation(_animation),
                 axis: Axis.horizontal,
                 child: SizedBox(
-                  // *** INCREASED WIDTH HERE TO PREVENT TRUNCATION ***
                   width: 200.0 * widget.fontScale,
                   child: Opacity(
                     opacity: opacity,
@@ -271,22 +340,18 @@ class _DynamicHorizontalHeaderState extends State<DynamicHorizontalHeader>
                 ),
               );
             },
-            // The structure for "Tools & More" title
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.menu_book,
-                      color: widget.theme.colorScheme.onSurface,
-                      size: 22 * widget.fontScale,
-                    ),
+                    Icon(Icons.menu_book,
+                        color: widget.theme.colorScheme.onSurface,
+                        size: 22 * widget.fontScale),
                     const SizedBox(width: 8),
-                    // Use Expanded to ensure the title takes up the remaining space without wrapping prematurely
                     Expanded(
                       child: Text(
-                        widget.title, // "Tools & More"
+                        widget.title,
                         style: TextStyle(
                           fontSize: 22 * widget.fontScale,
                           fontWeight: FontWeight.bold,
@@ -300,50 +365,60 @@ class _DynamicHorizontalHeaderState extends State<DynamicHorizontalHeader>
                 ),
                 const SizedBox(height: 8),
                 Divider(
-                  height: 1,
-                  color: widget.theme.colorScheme.onSurface.withOpacity(0.1),
-                  thickness: 1,
-                  indent: 0,
-                  endIndent: 0,
-                ),
+                    height: 1,
+                    color: widget.theme.colorScheme.onSurface.withOpacity(0.1),
+                    thickness: 1),
               ],
             ),
           ),
 
-          // 2. Dynamic Island Part (Right side - Expands/Contracts)
+          // ── Right: dynamic island ──
           GestureDetector(
             onTap: _toggleExpansion,
-            child: AnimatedBuilder(
-              animation: _animation,
+            child: ListenableBuilder(
+              listenable: _animation,
               builder: (context, child) {
-                // Determine the target width, capping it at the available screen space
-                final double targetWidth = min(_expandedWidth, maxIslandWidth);
-
-                // Animate height and width
-                final double currentHeight = Tween<double>(begin: _collapsedHeight, end: _expandedHeight).evaluate(_animation);
-                // Animate the width from collapsed (140.0) to the target width
-                final double currentWidth = Tween<double>(begin: 140.0, end: targetWidth).evaluate(_animation);
-                final double currentRadius = Tween<double>(begin: _collapsedHeight / 2, end: 20.0).evaluate(_animation);
+                final double targetWidth = min(380.0, maxIslandWidth);
+                final double currentHeight =
+                Tween<double>(begin: _collapsedHeight, end: _expandedHeight)
+                    .evaluate(_animation);
+                final double currentWidth =
+                Tween<double>(begin: 140.0, end: targetWidth)
+                    .evaluate(_animation);
+                final double currentRadius =
+                Tween<double>(begin: _collapsedHeight / 2, end: 20.0)
+                    .evaluate(_animation);
 
                 return Container(
                   height: currentHeight,
                   width: currentWidth,
-
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     gradient: dynamicGradient,
                     borderRadius: BorderRadius.circular(currentRadius),
                     boxShadow: [
                       BoxShadow(
-                        color: widget.theme.colorScheme.primary.withOpacity(_animation.value * 0.4),
+                        color: widget.theme.colorScheme.primary
+                            .withOpacity(_animation.value * 0.4),
                         blurRadius: 12 * _animation.value,
                         offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  child: child,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: _isExpanded
+                        ? KeyedSubtree(
+                      key: const ValueKey('expanded'),
+                      child: _buildExpandedContent(currentWidth),
+                    )
+                        : KeyedSubtree(
+                      key: const ValueKey('collapsed'),
+                      child: _buildCollapsedContent(),
+                    ),
+                  ),
                 );
               },
-              child: _buildContent(),
             ),
           ),
         ],

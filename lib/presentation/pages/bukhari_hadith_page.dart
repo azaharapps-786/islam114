@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/services.dart';
 
-import 'package:islam114/main.dart'; // Import for global RouteObserver from main.dart
+import 'package:islam114/main.dart';
 import '../../core/services/settings_service.dart';
 import '../widgets/hadith_card.dart';
 import '../widgets/hadith_chapter_list_item.dart';
@@ -29,12 +29,19 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
   bool _isLoading = true;
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
+
+  final ScrollController _chaptersScrollController = ScrollController();
+  final ScrollController _hadithsScrollController = ScrollController();
+
+  double _chaptersScrollPosition = 0.0;
+  double _hadithsScrollPosition = 0.0;
 
   int? _selectedChapterId;
   String _searchQuery = '';
   Map<String, dynamic>? _metadata;
-  Map<String, dynamic>? _fullJsonData; // Store the full JSON data
+  Map<String, dynamic>? _fullJsonData;
+
+  static const String _bookKey = 'bukhari';
 
   @override
   void initState() {
@@ -49,6 +56,17 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     );
     _animationController.forward();
 
+    _chaptersScrollController.addListener(() {
+      if (_chaptersScrollController.hasClients) {
+        _chaptersScrollPosition = _chaptersScrollController.offset;
+      }
+    });
+    _hadithsScrollController.addListener(() {
+      if (_hadithsScrollController.hasClients) {
+        _hadithsScrollPosition = _hadithsScrollController.offset;
+      }
+    });
+
     _loadData();
 
     _searchController.addListener(() {
@@ -62,7 +80,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Subscribe to the global RouteObserver instance.
     final modalRoute = ModalRoute.of(context);
     if (modalRoute is PageRoute) {
       routeObserver.subscribe(this, modalRoute as PageRoute<dynamic>);
@@ -73,7 +90,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Trigger animation restart when app resumes from background.
       _animationController.reset();
       _animationController.forward();
     }
@@ -84,8 +100,8 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     WidgetsBinding.instance.removeObserver(this);
     _animationController.dispose();
     _searchController.dispose();
-    _scrollController.dispose();
-    // Unsubscribe from the global RouteObserver to prevent memory leaks.
+    _chaptersScrollController.dispose();
+    _hadithsScrollController.dispose();
     final modalRoute = ModalRoute.of(context);
     if (modalRoute is PageRoute) {
       routeObserver.unsubscribe(this);
@@ -95,7 +111,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
 
   @override
   void didPopNext() {
-    // Triggered when returning to this route (e.g., popping back from another page).
     _animationController.reset();
     _animationController.forward();
   }
@@ -106,15 +121,8 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     });
 
     try {
-      debugPrint('Attempting to load JSON file...');
-
       final String jsonString = await rootBundle.loadString('assets/data/sahih_al_bukhari.json');
-      debugPrint('JSON file loaded successfully, length: ${jsonString.length}');
-
       final data = json.decode(jsonString);
-      debugPrint('JSON decoded successfully');
-
-      // Store the full JSON data for later use
       _fullJsonData = data;
 
       if (data['chapters'] != null) {
@@ -124,9 +132,7 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
           _filteredChapters = List<Map<String, dynamic>>.from(_chapters);
           _isLoading = false;
         });
-        debugPrint('Loaded ${_chapters.length} chapters');
       } else {
-        debugPrint('No chapters found in JSON');
         throw Exception('No chapters found in JSON');
       }
     } catch (e) {
@@ -134,7 +140,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
       setState(() {
         _isLoading = false;
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading data: $e')),
@@ -144,63 +149,52 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
   }
 
   Future<void> _loadHadiths(int chapterId) async {
+    if (_chaptersScrollController.hasClients) {
+      _chaptersScrollPosition = _chaptersScrollController.offset;
+    }
+
     setState(() {
       _isLoading = true;
       _selectedChapterId = chapterId;
     });
 
     try {
-      debugPrint('Loading hadiths for chapter $chapterId...');
-
       if (_fullJsonData == null) {
-        // If full data is not loaded, reload it
         final String jsonString = await rootBundle.loadString('assets/data/sahih_al_bukhari.json');
         _fullJsonData = json.decode(jsonString);
       }
 
-      // Check if hadiths exist in the JSON
       if (_fullJsonData!['hadiths'] != null) {
         final List<Map<String, dynamic>> allHadiths = List<Map<String, dynamic>>.from(_fullJsonData!['hadiths']);
 
-        // Filter hadiths for the selected chapter
-        final List<Map<String, dynamic>> chapterHadiths = allHadiths
-            .where((hadith) {
-          // Fix: Handle the case where chapterId might be null or not an int
+        final List<Map<String, dynamic>> chapterHadiths = allHadiths.where((hadith) {
           final hadithChapterId = hadith['chapterId'];
           if (hadithChapterId == null) return false;
 
-          // Convert both to int for comparison
           int hadithChapterIdInt;
           if (hadithChapterId is int) {
             hadithChapterIdInt = hadithChapterId;
           } else if (hadithChapterId is String) {
             hadithChapterIdInt = int.tryParse(hadithChapterId) ?? -1;
           } else {
-            // Handle other types by converting to string first
             hadithChapterIdInt = int.tryParse(hadithChapterId.toString()) ?? -1;
           }
 
           return hadithChapterIdInt == chapterId;
-        })
-            .toList();
-
-        // Log sample hadith structure for debugging
-        if (chapterHadiths.isNotEmpty) {
-          final sampleHadith = chapterHadiths.first;
-          debugPrint('Sample hadith keys: ${sampleHadith.keys.toList()}');
-          debugPrint('Sample hadith arabic preview: ${sampleHadith['arabic']?.toString().substring(0, 100) ?? 'N/A'}...');
-          debugPrint('Sample hadith english preview: ${sampleHadith['english']?.toString().substring(0, 100) ?? 'N/A'}...');
-        }
-
-        debugPrint('Found ${chapterHadiths.length} hadiths for chapter $chapterId');
+        }).toList();
 
         setState(() {
           _hadiths = chapterHadiths;
           _filteredHadiths = List<Map<String, dynamic>>.from(_hadiths);
           _isLoading = false;
         });
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_hadithsScrollController.hasClients && _hadithsScrollPosition > 0) {
+            _hadithsScrollController.jumpTo(_hadithsScrollPosition);
+          }
+        });
       } else {
-        debugPrint('No hadiths found in JSON');
         throw Exception('No hadiths found in JSON');
       }
     } catch (e) {
@@ -208,7 +202,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
       setState(() {
         _isLoading = false;
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading hadiths: $e')),
@@ -229,36 +222,41 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
 
     setState(() {
       _isSearching = true;
+      final query = _searchQuery.toLowerCase();
 
-      // Filter chapters
       _filteredChapters = _chapters.where((chapter) {
         final title = chapter['english']?.toString().toLowerCase() ?? '';
         final titleAr = chapter['arabic']?.toString().toLowerCase() ?? '';
-        final query = _searchQuery.toLowerCase();
+        final chapterNum = chapter['id']?.toString().toLowerCase() ??
+            chapter['chapterNumber']?.toString().toLowerCase() ??
+            chapter['number']?.toString().toLowerCase() ?? '';
 
-        return title.contains(query) || titleAr.contains(query);
+        return title.contains(query) ||
+            titleAr.contains(query) ||
+            chapterNum.contains(query);
       }).toList();
 
-      // Filter hadiths if a chapter is selected
       if (_selectedChapterId != null) {
         _filteredHadiths = _hadiths.where((hadith) {
           final text = hadith['english']?.toString().toLowerCase() ?? '';
           final textAr = hadith['arabic']?.toString().toLowerCase() ?? '';
-          final query = _searchQuery.toLowerCase();
+          final hadithNum = hadith['number']?.toString().toLowerCase() ??
+              hadith['hadithNumber']?.toString().toLowerCase() ??
+              hadith['id']?.toString().toLowerCase() ?? '';
+          final narrator = hadith['narrator']?.toString().toLowerCase() ?? '';
 
-          return text.contains(query) || textAr.contains(query);
+          return text.contains(query) ||
+              textAr.contains(query) ||
+              hadithNum.contains(query) ||
+              narrator.contains(query);
         }).toList();
       }
     });
   }
 
   void _selectChapter(int chapterId) {
+    _hadithsScrollPosition = 0.0;
     _loadHadiths(chapterId);
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
   }
 
   void _clearSearch() {
@@ -270,25 +268,29 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
   }
 
   void _backToChapters() {
+    if (_hadithsScrollController.hasClients) {
+      _hadithsScrollPosition = _hadithsScrollController.offset;
+    }
+
     setState(() {
       _selectedChapterId = null;
-      _hadiths = [];
-      _filteredHadiths = [];
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_chaptersScrollController.hasClients) {
+        _chaptersScrollController.jumpTo(_chaptersScrollPosition);
+      }
     });
   }
 
-  // Handle back navigation
   Future<bool> _onWillPop() async {
     if (_selectedChapterId != null) {
-      // If we're viewing hadiths, go back to chapters
       _backToChapters();
-      return false; // Prevent the default back action
+      return false;
     }
-    // If we're already at chapters, allow the default back action
     return true;
   }
 
-  // Helper method to safely extract int from dynamic value
   int _extractIntSafely(dynamic value, int fallback) {
     if (value == null) return fallback;
     if (value is int) return value;
@@ -346,7 +348,6 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
           backgroundColor: theme.colorScheme.primary,
           foregroundColor: Colors.white,
           elevation: 0,
-          // Always show the back button, but handle its behavior differently
           automaticallyImplyLeading: true,
           leading: Navigator.canPop(context)
               ? IconButton(
@@ -372,7 +373,7 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
           ],
         ),
         body: Container(
-          color: settings.backgroundColor, // Apply background color from settings
+          color: settings.backgroundColor,
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: Column(
@@ -384,18 +385,9 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: _selectedChapterId == null
-                          ? 'Search chapters...'
-                          : 'Search hadiths...',
-                      prefixIcon: _isSearching
-                          ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                          : const Icon(Icons.search),
+                          ? 'Search chapters (e.g., 40, prayer, fasting)...'
+                          : 'Search hadiths (e.g., 100, prophet, narrated)...',
+                      prefixIcon: const Icon(Icons.search),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                         icon: const Icon(Icons.clear),
@@ -440,7 +432,7 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
             ),
             const SizedBox(height: 16),
             Text(
-              'No chapters found',
+              _searchQuery.isNotEmpty ? 'No chapters found for "$_searchQuery"' : 'No chapters found',
               style: TextStyle(
                 fontSize: 18 * fontScale,
                 color: Colors.grey.withOpacity(0.6),
@@ -448,7 +440,7 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
             ),
             const SizedBox(height: 8),
             Text(
-              'Try searching with different keywords',
+              'Try searching with chapter number or keywords',
               style: TextStyle(
                 fontSize: 14 * fontScale,
                 color: Colors.grey.withOpacity(0.6),
@@ -461,12 +453,16 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     }
 
     return ListView.builder(
-      controller: _scrollController,
+      key: const PageStorageKey<String>('chapters_list'),
+      controller: _chaptersScrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       itemCount: _filteredChapters.length,
       itemBuilder: (context, index) {
         final chapter = _filteredChapters[index];
-        final chapterId = _extractIntSafely(chapter['id'], index + 1);
+        final chapterId = _extractIntSafely(
+            chapter['id'] ?? chapter['chapterNumber'] ?? chapter['number'],
+            index + 1
+        );
         return AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
@@ -495,7 +491,7 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
             ),
             const SizedBox(height: 16),
             Text(
-              'No hadiths found',
+              _searchQuery.isNotEmpty ? 'No hadiths found for "$_searchQuery"' : 'No hadiths found',
               style: TextStyle(
                 fontSize: 18 * fontScale,
                 color: Colors.grey.withOpacity(0.6),
@@ -503,7 +499,7 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
             ),
             const SizedBox(height: 8),
             Text(
-              'Try searching with different keywords',
+              'Try searching with hadith number or keywords',
               style: TextStyle(
                 fontSize: 14 * fontScale,
                 color: Colors.grey.withOpacity(0.6),
@@ -516,19 +512,28 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
     }
 
     return ListView.builder(
-      controller: _scrollController,
+      key: PageStorageKey<String>('hadiths_list_${_selectedChapterId}'),
+      controller: _hadithsScrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       itemCount: _filteredHadiths.length,
       itemBuilder: (context, index) {
         final hadith = _filteredHadiths[index];
 
-        // Safely extract hadithNumber as int, fallback to (index + 1) if null/invalid
-        final int hadithNumber = _extractIntSafely(hadith['number'], index + 1);
+        final int hadithNumber = _extractIntSafely(
+            hadith['number'] ?? hadith['hadithNumber'] ?? hadith['id'],
+            index + 1
+        );
 
-        // Use correct JSON keys: 'arabic' and 'english'
         final String textAr = hadith['arabic']?.toString() ?? '';
         final String text = hadith['english']?.toString() ?? '';
         final String? narrator = hadith['narrator']?.toString();
+
+        final chapterName = _chapters.isNotEmpty
+            ? _chapters.firstWhere(
+              (c) => _extractIntSafely(c['id'] ?? c['chapterNumber'] ?? c['number'], 0) == _selectedChapterId,
+          orElse: () => {'english': 'Chapter $_selectedChapterId'},
+        )['english']?.toString() ?? 'Chapter $_selectedChapterId'
+            : 'Chapter $_selectedChapterId';
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 200),
@@ -542,6 +547,10 @@ class _BukhariHadithPageState extends State<BukhariHadithPage>
               narrator: narrator,
               fontScale: fontScale,
               showArabic: showArabic,
+              chapterId: _selectedChapterId ?? 0,
+              chapterName: chapterName,
+              bookKey: _bookKey,
+              surahOrChapterNumber: _selectedChapterId ?? 0,
             ),
           ),
         );

@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import 'dart:ui' as ui; // Added for BackdropFilter (Glassmorphism)
+import 'dart:ui' as ui;
 
 import '../../core/services/settings_service.dart';
 
@@ -27,12 +27,16 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
   late String _today;
   bool _isLoading = true;
 
+  // FIXED: Limit history to 1 year to prevent unbounded growth
+  static const int _maxHistoryDays = 365;
+
   // Reliable & fast sound system
   final List<AudioPlayer> _audioPlayers = [];
   int _currentPlayerIndex = 0;
   static const int _playerPoolSize = 5;
 
   Timer? _tapRateTimer;
+  Timer? _midnightCheckTimer; // NEW: Check for day change
   int _recentTaps = 0;
   double _currentSpeed = 1.0;
 
@@ -53,6 +57,7 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
     _initializeTapAnimation();
     _initializeAudioPlayers();
     _initializeTapRateMonitor();
+    _startMidnightCheck(); // NEW: Start checking for day change
     _loadData();
   }
 
@@ -101,15 +106,44 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
     });
   }
 
+  // NEW: Check every minute if the day has changed
+  void _startMidnightCheck() {
+    _midnightCheckTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      final newToday = _dateFormat.format(DateTime.now());
+      if (newToday != _today) {
+        debugPrint('Day changed from $_today to $newToday');
+        _handleDayChange(newToday);
+      }
+    });
+  }
+
+  // NEW: Handle when midnight passes
+  void _handleDayChange(String newDay) {
+    // Save the old day's final count to history
+    _history[_today] = _counter;
+    _saveHistoryToDisk(); // Save old history before switching
+
+    setState(() {
+      _today = newDay;
+      _counter = 0; // Reset counter for new day
+    });
+    _saveTodayCount(); // Save new day (0)
+  }
+
   @override
   void dispose() {
     _tapRateTimer?.cancel();
+    _midnightCheckTimer?.cancel(); // NEW
     for (final player in _audioPlayers) {
       player.stop();
       player.dispose();
     }
     _tapAnimationController.dispose();
     _pageAnimationController.dispose();
+
+    // NEW: Save history one last time when leaving the page
+    _saveHistoryToDisk();
+
     super.dispose();
   }
 
@@ -135,11 +169,29 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
     try {
       final prefs = await SharedPreferences.getInstance();
       final Map<String, int> newHistory = {};
+      final now = DateTime.now();
+
       final keys = prefs.getKeys().where((key) => key.startsWith('count_')).toList();
       for (final key in keys) {
-        final date = key.substring(6);
-        newHistory[date] = prefs.getInt(key) ?? 0;
+        final dateStr = key.substring(6);
+
+        // FIXED: Parse date and skip entries older than _maxHistoryDays
+        try {
+          final date = DateTime.parse(dateStr);
+          final difference = now.difference(date).inDays;
+
+          if (difference <= _maxHistoryDays) {
+            newHistory[dateStr] = prefs.getInt(key) ?? 0;
+          } else {
+            // OLD: Clean up expired entries from disk to free space
+            prefs.remove(key);
+          }
+        } catch (e) {
+          // Invalid date format, skip or remove
+          prefs.remove(key);
+        }
       }
+
       if (mounted) {
         setState(() {
           _history.clear();
@@ -151,27 +203,46 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
     }
   }
 
-  Future<void> _saveData() async {
+  // FIXED: Split save into separate methods for performance
+
+  /// Saves ONLY today's count (called on every tap - FAST)
+  Future<void> _saveTodayCount() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('count_$_today', _counter);
-      await prefs.setInt('target', _target);
-      await prefs.setBool('sound_enabled', _soundEnabled);
-      await prefs.setBool('haptic_enabled', _hapticEnabled);
 
-      // FIXED: Update history and trigger UI update
+      // Update local map without disk write
       if (mounted) {
         setState(() {
           _history[_today] = _counter;
         });
       }
+    } catch (e) {
+      debugPrint('Save count error: $e');
+    }
+  }
 
-      // Also save the history to SharedPreferences
+  /// Saves ONLY settings (called when settings change - FAST)
+  Future<void> _saveSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('target', _target);
+      await prefs.setBool('sound_enabled', _soundEnabled);
+      await prefs.setBool('haptic_enabled', _hapticEnabled);
+    } catch (e) {
+      debugPrint('Save settings error: $e');
+    }
+  }
+
+  /// Saves FULL history to disk (called only on dispose/day change - SLOW BUT RARE)
+  Future<void> _saveHistoryToDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
       for (final entry in _history.entries) {
         await prefs.setInt('count_${entry.key}', entry.value);
       }
     } catch (e) {
-      debugPrint('Save error: $e');
+      debugPrint('Save history error: $e');
     }
   }
 
@@ -193,20 +264,18 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
   void _onTapCancel() => _tapAnimationController.reverse();
 
   void _incrementCounter() {
-    // FIXED: Update counter first, then save data
     setState(() => _counter++);
     _recentTaps++;
     _playSound();
     if (_hapticEnabled) HapticFeedback.lightImpact();
-    _saveData(); // This will now save the updated counter and update history
+    _saveTodayCount(); // FIXED: Only saves today's count (1 disk write instead of 180+)
   }
 
   void _decrementCounter() {
     if (_counter > 0) {
-      // FIXED: Update counter first, then save data
       setState(() => _counter--);
       _playSound();
-      _saveData(); // This will now save the updated counter and update history
+      _saveTodayCount(); // FIXED: Only saves today's count
     }
   }
 
@@ -221,7 +290,7 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
           TextButton(
             onPressed: () {
               setState(() => _counter = 0);
-              _saveData(); // Save the reset counter and update history
+              _saveTodayCount(); // FIXED
               Navigator.pop(context);
             },
             child: const Text('Reset', style: TextStyle(color: Colors.red)),
@@ -249,7 +318,7 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
               final newTarget = int.tryParse(controller.text);
               if (newTarget != null && newTarget > 0) {
                 setState(() => _target = newTarget);
-                _saveData();
+                _saveSettings(); // FIXED: Only saves settings
               }
               Navigator.pop(context);
             },
@@ -287,14 +356,14 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
             icon: Icon(_soundEnabled ? Icons.volume_up : Icons.volume_off),
             onPressed: () {
               setState(() => _soundEnabled = !_soundEnabled);
-              _saveData();
+              _saveSettings(); // FIXED: Only saves settings
             },
           ),
           IconButton(
             icon: Icon(_hapticEnabled ? Icons.vibration : Icons.phone_android),
             onPressed: () {
               setState(() => _hapticEnabled = !_hapticEnabled);
-              _saveData();
+              _saveSettings(); // FIXED: Only saves settings
             },
           ),
         ],
@@ -346,7 +415,7 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
                     ),
                   ),
 
-                  // COUNT HERE Area (Transparency Fixed)
+                  // COUNT HERE Area
                   Expanded(
                     flex: 5,
                     child: GestureDetector(
@@ -367,7 +436,6 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
                                   filter: ui.ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      // CHANGED: Surface color with transparency
                                       color: theme.colorScheme.surface.withOpacity(0.9),
                                       borderRadius: BorderRadius.circular(16),
                                       border: containerBorder,
@@ -465,7 +533,13 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('History', style: TextStyle(fontSize: 16 * fontScale, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('History', style: TextStyle(fontSize: 16 * fontScale, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
+                            Text('Last $_maxHistoryDays days', style: TextStyle(fontSize: 11 * fontScale, color: Colors.grey)),
+                          ],
+                        ),
                         const SizedBox(height: 8),
                         SizedBox(
                           height: 80,
@@ -477,12 +551,31 @@ class _TasbeehPageState extends State<TasbeehPage> with TickerProviderStateMixin
                               final sorted = _history.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
                               final entry = sorted[index];
                               final date = DateTime.parse(entry.key);
+                              final isToday = entry.key == _today;
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 2),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(DateFormat('MMM dd').format(date), style: const TextStyle(fontSize: 12)),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          isToday ? 'Today' : DateFormat('MMM dd').format(date),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                                            color: isToday ? theme.colorScheme.primary : null,
+                                          ),
+                                        ),
+                                        if (!isToday) ...[
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            DateFormat('yyyy').format(date),
+                                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                     Text('${entry.value} taps',
                                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                                   ],

@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:islam114/presentation/pages/niyat_list_page.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart';
 
 import 'presentation/pages/dua_page.dart';
 import 'core/services/settings_service.dart';
@@ -27,6 +29,78 @@ import 'presentation/pages/library_list_page.dart';
 import 'presentation/pages/about_us_page.dart';
 
 final RouteObserver<PageRoute<dynamic>> routeObserver = RouteObserver<PageRoute<dynamic>>();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Global Quran data preload cache
+// ──────────────────────────────────────────────────────────────────────────────
+class QuranDataCache {
+  /// key -> decoded JSON (List or Map depending on file)
+  static final Map<String, dynamic> jsonCache = {};
+
+  static bool isPreloaded = false;
+  static Future<void>? _preloadFuture;
+
+  /// Languages supported across the app
+  static const List<String> languages = [
+    'english',
+    'assamese',
+    'hindi',
+    'bengali',
+    'arabic',
+  ];
+
+  /// Call this once, early (e.g. during splash screen init), and await it
+  /// before showing the main app UI.
+  static Future<void> preloadAll() {
+    return _preloadFuture ??= _doPreload();
+  }
+
+  /// Build the same cache key used by SurahDetailPage:
+  /// '$_language$_isTafseer'  e.g. 'englishfalse', 'englishtrue'
+  static String key(String language, bool isTafseer) => '$language$isTafseer';
+
+  static Future<void> _doPreload() async {
+    final Map<String, String> filesToLoad = {};
+
+    // Non-tafseer + tafseer translation files for every language
+    for (final lang in languages) {
+      filesToLoad[key(lang, false)] = 'assets/data/quran_$lang.json';
+      filesToLoad[key(lang, true)] = 'assets/data/quran_${lang}_tafseer.json';
+    }
+
+    // Arabic verses (used as a separate source for arabic text overlay)
+    filesToLoad['arabic'] = 'assets/data/quran_arabic.json';
+
+    // English transliteration (used across all languages)
+    filesToLoad['transliteration'] = 'assets/data/quran_english_transliteration.json';
+
+    // ── FIX #3: Quran Dictionary files ──────────────────────────────────
+    // Preload all dictionary language files so QuranDictionaryPage never
+    // needs to call rootBundle.loadString at runtime.
+    for (final lang in languages) {
+      filesToLoad['dict_$lang'] = 'assets/dictionaries/quran_dictionary_$lang.json';
+    }
+
+    await Future.wait(filesToLoad.entries.map((entry) async {
+      final cacheKey = entry.key;
+      final path = entry.value;
+
+      // Skip if already loaded somehow
+      if (jsonCache.containsKey(cacheKey)) return;
+
+      try {
+        final String jsonString = await rootBundle.loadString(path);
+        jsonCache[cacheKey] = json.decode(jsonString);
+      } catch (e) {
+        // Some tafseer/language/dictionary files may not exist for every
+        // language — that's fine, pages already have fallback handling.
+        debugPrint('QuranDataCache: skipped/failed "$path" -> $e');
+      }
+    }));
+
+    isPreloaded = true;
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -98,10 +172,13 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
 
   Future<void> _initializeApp() async {
     final settingsService = Provider.of<SettingsService>(context, listen: false);
-    await settingsService.loadSettings();
-
     final prayerTimesProvider = Provider.of<PrayerTimesProvider>(context, listen: false);
-    await prayerTimesProvider.initialize();
+
+    await Future.wait([
+      settingsService.loadSettings(),
+      prayerTimesProvider.initialize(),
+      QuranDataCache.preloadAll(),
+    ]);
 
     if (mounted) {
       setState(() {
@@ -128,8 +205,8 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
           darkTheme: AppTheme.darkTheme,
           themeMode: settingsService.themeMode,
           home: _isInitialized
-              ? AnimatedBuilder(
-            animation: _animationController,
+              ? ListenableBuilder(
+            listenable: _animationController,
             builder: (context, child) {
               return FadeTransition(
                 opacity: _fadeAnimation,
@@ -157,12 +234,10 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
             '/niyat': (context) => const NiyatListPage(),
             '/library': (context) => const LibraryListPage(),
             '/about': (context) => const AboutUsPage(),
-// '/darood' and '/allahNames' are intentionally NOT here → handled by onGenerateRoute
           },
           navigatorObservers: [routeObserver],
           onGenerateRoute: (settings) {
             if (settings.name != null) {
-// Handle Darood with language
               if (settings.name == '/darood') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final language = args?['language'] as String? ?? 'english';
@@ -177,7 +252,7 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
                 final language = args?['language'] as String? ?? 'english';
 
                 return MaterialPageRoute(
-                  builder: (context) => AllahNamesPage(language: language), // Pass the language parameter here
+                  builder: (context) => AllahNamesPage(language: language),
                 );
               }
 
@@ -194,7 +269,6 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
                 );
               }
 
-// Amal Namah
               if (settings.name == '/amalNamah') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final language = args?['language'] as String? ?? 'english';
@@ -217,7 +291,7 @@ class _Islam114AppState extends State<Islam114App> with TickerProviderStateMixin
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// SplashScreen & PlaceholderPage (unchanged)
+// SplashScreen
 // ──────────────────────────────────────────────────────────────────────────────
 
 class SplashScreen extends StatefulWidget {
@@ -285,15 +359,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
+            colors: [Color(0xFF2E7D32), Color(0xFF1B5E20)], // Deep Green Gradient
           ),
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              AnimatedBuilder(
-                animation: Listenable.merge([_logoAnimation, _pulseAnimation]),
+              ListenableBuilder(
+                listenable: Listenable.merge([_logoAnimation, _pulseAnimation]),
                 builder: (context, child) {
                   return Transform.scale(
                     scale: _logoAnimation.value * _pulseAnimation.value,
@@ -311,14 +385,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                           ),
                         ],
                       ),
-                      child: const Icon(Icons.mosque, size: 70, color: Color(0xFF1E88E5)),
+                      child: const Icon(Icons.mosque, size: 70, color: Color(0xFF2E7D32)), // Green Icon
                     ),
                   );
                 },
               ),
               const SizedBox(height: 40),
-              AnimatedBuilder(
-                animation: _textAnimation,
+              ListenableBuilder(
+                listenable: _textAnimation,
                 builder: (context, child) {
                   return FadeTransition(
                     opacity: _textAnimation,
@@ -333,8 +407,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 },
               ),
               const SizedBox(height: 10),
-              AnimatedBuilder(
-                animation: _textAnimation,
+              ListenableBuilder(
+                listenable: _textAnimation,
                 builder: (context, child) {
                   return FadeTransition(
                     opacity: _textAnimation,
@@ -348,9 +422,25 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   );
                 },
               ),
+              const SizedBox(height: 8), // Spacing before developer name
+              ListenableBuilder(
+                listenable: _textAnimation,
+                builder: (context, child) {
+                  return FadeTransition(
+                    opacity: _textAnimation,
+                    child: Transform.translate(
+                      offset: Offset(0, 20 * (1 - _textAnimation.value)),
+                      child: const Text(
+                        'Developer: AzaharApps',
+                        style: TextStyle(fontSize: 14, color: Colors.white54, letterSpacing: 0.5),
+                      ),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 60),
-              AnimatedBuilder(
-                animation: _textAnimation,
+              ListenableBuilder(
+                listenable: _textAnimation,
                 builder: (context, child) {
                   return FadeTransition(
                     opacity: _textAnimation,

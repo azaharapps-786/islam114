@@ -86,8 +86,6 @@ class _SurahListPageState extends State<SurahListPage>
     super.dispose();
   }
 
-  // --- LOGIC METHODS ---
-
   void _updateTitle() {
     String newTitle;
     if (_isTafseer) {
@@ -166,8 +164,6 @@ class _SurahListPageState extends State<SurahListPage>
     });
   }
 
-  // --- UI BUILD METHODS ---
-
   @override
   Widget build(BuildContext context) {
     final fontScale = Provider.of<SettingsService>(context).fontScale;
@@ -179,10 +175,10 @@ class _SurahListPageState extends State<SurahListPage>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFFE8F5E9), // Very light green
-              Color(0xFFC8E6C9), // Light green
-              Color(0xFFA5D6A7), // Slightly deeper soft green
-              Color(0xFFDCEDC8), // Light lime-green accent at bottom
+              Color(0xFFE8F5E9),
+              Color(0xFFC8E6C9),
+              Color(0xFFA5D6A7),
+              Color(0xFFDCEDC8),
             ],
             stops: [0.0, 0.4, 0.8, 1.0],
           ),
@@ -214,7 +210,7 @@ class _SurahListPageState extends State<SurahListPage>
       child: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF2E7D32), Color(0xFF388E3C)], // Rich green header
+            colors: [Color(0xFF2E7D32), Color(0xFF388E3C)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),

@@ -16,15 +16,15 @@ class SettingsService with ChangeNotifier {
   // Global Language Selection
   String _selectedLanguage = 'english';
 
-  // FIX: Separate settings for Quran and Tafseer
-  // Surah display settings by language (for Quran)
+  // Separate settings for Quran and Tafseer
   Map<String, SurahDisplaySettings> _surahDisplaySettings = {};
-
-  // Tafseer display settings by language (for Tafseer)
   Map<String, SurahDisplaySettings> _tafseerDisplaySettings = {};
 
   // Bookmarked verses
   List<Map<String, dynamic>> _bookmarkedVerses = [];
+
+  // ===== NEW: Last Read Marks =====
+  Map<String, Map<String, dynamic>> _lastReadMarks = {};
 
   // Getters
   ThemeMode get themeMode => _themeMode;
@@ -34,13 +34,12 @@ class SettingsService with ChangeNotifier {
   Color get backgroundColor => _backgroundColor;
   Map<String, SurahDisplaySettings> get surahDisplaySettings => _surahDisplaySettings;
   String get selectedLanguage => _selectedLanguage;
+  Map<String, Map<String, dynamic>> get lastReadMarks => _lastReadMarks;
 
   Future<void> loadSettings() async {
     _prefs = await SharedPreferences.getInstance();
 
-    // Load persisted global language
     _selectedLanguage = _prefs.getString('selected_language_key') ?? 'english';
-
     _themeMode = ThemeMode.light;
     _fontScale = _prefs.getDouble(AppConstants.fontScaleKey) ?? 1.0;
 
@@ -57,8 +56,9 @@ class SettingsService with ChangeNotifier {
 
     _initializeDisplaySettings();
     await _loadDisplaySettings();
-    await _loadTafseerDisplaySettings(); // FIX: Load Tafseer settings separately
+    await _loadTafseerDisplaySettings();
     await _loadBookmarkedVerses();
+    await _loadLastReadMarks();
 
     notifyListeners();
   }
@@ -71,7 +71,6 @@ class SettingsService with ChangeNotifier {
     }
   }
 
-  // FIX: Smart getter that returns the correct settings based on mode
   SurahDisplaySettings getSurahDisplaySettings(String language, bool isTafseer) {
     if (isTafseer) {
       return _tafseerDisplaySettings[language] ?? SurahDisplaySettings.defaultForTafseer(language);
@@ -80,9 +79,18 @@ class SettingsService with ChangeNotifier {
     }
   }
 
-  // FIX: Dedicated getter for Tafseer settings
   SurahDisplaySettings getTafseerDisplaySettings(String language) {
     return _tafseerDisplaySettings[language] ?? SurahDisplaySettings.defaultForTafseer(language);
+  }
+
+  // ── FIX #1 & #2: Force Consumer<SettingsService> rebuild on navigation ──
+  /// Forces a rebuild of widgets listening to SettingsService.
+  /// Used by SurahDetailPage when navigating with a new language/tafseer mode,
+  /// to ensure VerseCard's Consumer<SettingsService> picks up the correct
+  /// display settings (showTafseer, showTranslation, additionalTranslations, etc.)
+  /// on the very first frame instead of only after some other settings change.
+  void refreshDisplaySettings() {
+    notifyListeners();
   }
 
   Future<void> updateThemeMode(ThemeMode newThemeMode) async {
@@ -142,7 +150,6 @@ class SettingsService with ChangeNotifier {
     }
   }
 
-  // FIX: Separate loader for Tafseer settings
   Future<void> _loadTafseerDisplaySettings() async {
     final languages = ['english', 'assamese', 'hindi', 'bengali', 'arabic'];
     for (final language in languages) {
@@ -171,15 +178,165 @@ class SettingsService with ChangeNotifier {
     }
   }
 
+  // ===== NEW: Last Read Marks Methods =====
+
+  Future<void> _loadLastReadMarks() async {
+    final marksJson = _prefs.getString('last_read_marks');
+    if (marksJson != null) {
+      try {
+        final Map<String, dynamic> marksMap = json.decode(marksJson);
+        _lastReadMarks = marksMap.map(
+              (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
+        );
+      } catch (e) {
+        debugPrint('Error loading last read marks: $e');
+        _lastReadMarks = {};
+      }
+    }
+  }
+
+  Future<void> _saveLastReadMarks() async {
+    await _prefs.setString('last_read_marks', json.encode(_lastReadMarks));
+  }
+
+  /// Mark a Quran verse as last read for a specific surah
+  /// Automatically unmarks any previous verse in the same surah
+  Future<void> markQuranLastRead({
+    required int surahNumber,
+    required int verseNumber,
+    required String surahName,
+    String language = 'english',
+    bool isTafseer = false,
+  }) async {
+    final modeSuffix = isTafseer ? '_tafseer' : '';
+    final key = 'quran${modeSuffix}_$surahNumber';
+
+    _lastReadMarks[key] = {
+      'itemNumber': verseNumber,
+      'itemName': surahName,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'type': isTafseer ? 'quran_tafseer' : 'quran',
+      'surahNumber': surahNumber,
+      'language': language,
+      'isTafseer': isTafseer,
+    };
+
+    await _saveLastReadMarks();
+    notifyListeners();
+  }
+
+  /// Mark a Hadith as last read for a specific chapter
+  /// Automatically unmarks any previous hadith in the same chapter
+  Future<void> markHadithLastRead({
+    required String bookKey,
+    required int chapterId,
+    required int hadithNumber,
+    required String chapterName,
+  }) async {
+    final key = '${bookKey}_$chapterId';
+
+    _lastReadMarks[key] = {
+      'itemNumber': hadithNumber,
+      'itemName': chapterName,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'type': 'hadith',
+      'bookKey': bookKey,
+      'chapterId': chapterId,
+    };
+
+    await _saveLastReadMarks();
+    notifyListeners();
+  }
+
+  /// Get last read mark for a specific Quran surah
+  Map<String, dynamic>? getLastReadQuran(int surahNumber, {bool isTafseer = false}) {
+    final modeSuffix = isTafseer ? '_tafseer' : '';
+    return _lastReadMarks['quran${modeSuffix}_$surahNumber'];
+  }
+
+  /// Get last read mark for a specific Hadith chapter
+  Map<String, dynamic>? getLastReadHadith(String bookKey, int chapterId) {
+    return _lastReadMarks['${bookKey}_$chapterId'];
+  }
+
+  /// Get any last read mark (for surah/chapter list pages)
+  /// Returns the most recent one
+  Map<String, dynamic>? getMostRecentLastReadMark() {
+    if (_lastReadMarks.isEmpty) return null;
+
+    final sorted = _lastReadMarks.entries.toList()
+      ..sort((a, b) =>
+          (b.value['timestamp'] as int).compareTo(a.value['timestamp'] as int));
+
+    return {
+      'key': sorted.first.key,
+      ...sorted.first.value,
+    };
+  }
+
+  /// Find which surah number has a last read mark (for scrolling in list)
+  int? getSurahNumberWithLastRead({bool isTafseer = false}) {
+    final modeSuffix = isTafseer ? '_tafseer' : '';
+    final prefix = 'quran${modeSuffix}_';
+
+    for (final entry in _lastReadMarks.entries) {
+      if (entry.key.startsWith(prefix)) {
+        return entry.value['surahNumber'] as int?;
+      }
+    }
+    return null;
+  }
+
+  /// Find which chapter ID has a last read mark (for scrolling in list)
+  int? getChapterIdWithLastRead(String bookKey) {
+    final prefix = '${bookKey}_';
+
+    for (final entry in _lastReadMarks.entries) {
+      if (entry.key.startsWith(prefix)) {
+        return entry.value['chapterId'] as int?;
+      }
+    }
+    return null;
+  }
+
+  /// Clear last read mark for a specific Quran surah
+  Future<void> clearLastReadQuran(int surahNumber, {bool isTafseer = false}) async {
+    final modeSuffix = isTafseer ? '_tafseer' : '';
+    _lastReadMarks.remove('quran${modeSuffix}_$surahNumber');
+    await _saveLastReadMarks();
+    notifyListeners();
+  }
+
+  /// Clear last read mark for a specific Hadith chapter
+  Future<void> clearLastReadHadith(String bookKey, int chapterId) async {
+    _lastReadMarks.remove('${bookKey}_$chapterId');
+    await _saveLastReadMarks();
+    notifyListeners();
+  }
+
+  /// Check if a specific verse is marked as last read
+  bool isQuranVerseLastRead(int surahNumber, int verseNumber, {bool isTafseer = false}) {
+    final mark = getLastReadQuran(surahNumber, isTafseer: isTafseer);
+    if (mark == null) return false;
+    return mark['itemNumber'] == verseNumber;
+  }
+
+  /// Check if a specific hadith is marked as last read
+  bool isHadithLastRead(String bookKey, int chapterId, int hadithNumber) {
+    final mark = getLastReadHadith(bookKey, chapterId);
+    if (mark == null) return false;
+    return mark['itemNumber'] == hadithNumber;
+  }
+
+  // ===== END: Last Read Marks Methods =====
+
   Future<void> _saveSettings() async {
-    // Save Quran settings
     for (final entry in _surahDisplaySettings.entries) {
       await _prefs.setString(
         'surah_display_settings_${entry.key}',
         json.encode(entry.value.toJson()),
       );
     }
-    // FIX: Save Tafseer settings with a different key
     for (final entry in _tafseerDisplaySettings.entries) {
       await _prefs.setString(
         'tafseer_display_settings_${entry.key}',
@@ -195,7 +352,6 @@ class SettingsService with ChangeNotifier {
     notifyListeners();
   }
 
-  // FIX: Dedicated updater for Tafseer settings
   void updateTafseerDisplaySettings(String language, SurahDisplaySettings settings) {
     _tafseerDisplaySettings[language] = settings;
     _saveSettings();
@@ -239,7 +395,6 @@ class SettingsService with ChangeNotifier {
   }
 }
 
-// --- THIS IS THE CLASS THAT WAS MISSING ---
 class SurahDisplaySettings {
   final bool showArabic;
   final bool showTranslation;
@@ -280,14 +435,12 @@ class SurahDisplaySettings {
     );
   }
 
-  // FIX: New factory for Tafseer defaults
   factory SurahDisplaySettings.defaultForTafseer(String language) {
-    // For Tafseer, default to showing translation but not Arabic or transliteration
     return SurahDisplaySettings(
       showArabic: false,
       showTranslation: true,
       showTransliteration: false,
-      showTafseer: true, // Always show Tafseer in Tafseer mode
+      showTafseer: true,
       additionalTranslations: {},
       additionalTransliterations: {},
       additionalTafseers: {},

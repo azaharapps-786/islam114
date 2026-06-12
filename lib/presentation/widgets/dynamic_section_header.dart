@@ -1,11 +1,9 @@
 // lib/presentation/widgets/dynamic_section_header.dart
-import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle, Clipboard, ClipboardData;
 import 'package:provider/provider.dart';
-
 import '../../core/services/settings_service.dart';
+import 'package:islam114/main.dart';
 
 class DynamicSectionHeader extends StatefulWidget {
   final String title;
@@ -23,32 +21,21 @@ class DynamicSectionHeader extends StatefulWidget {
 
 class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
     with SingleTickerProviderStateMixin {
-
-  // --- Animation State ---
   late AnimationController _controller;
   late Animation<double> _animation;
   bool _isExpanded = false;
 
-  // Size Constants
   static const Duration _animationDuration = Duration(milliseconds: 400);
   static const double _collapsedHeight = 40.0;
-  static const double _expandedHeight = 280.0;
+  static const double _expandedHeight = 180.0;
 
-  // REMOVED static const double _expandedWidth = 280.0; - This will be calculated dynamically
-
-  // --- Data State ---
-  Map<String, dynamic>? _randomVerse;
-  bool _isLoading = true;
-  bool _hasError = false;
+  Map<String, dynamic>? _lastReadMark;
 
   @override
   void initState() {
     super.initState();
-    // Initialize Animation Controller
-    _controller =
-        AnimationController(vsync: this, duration: _animationDuration);
+    _controller = AnimationController(vsync: this, duration: _animationDuration);
     _animation = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
-    _loadRandomVerse();
   }
 
   @override
@@ -57,247 +44,254 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
     super.dispose();
   }
 
-  void reloadVerse() {
-    _loadRandomVerse();
-  }
-
-  Future<void> _loadRandomVerse() async {
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-      _randomVerse = null;
-    });
-
-    try {
-      final String jsonString = await rootBundle.loadString(
-          'assets/data/quran_english.json');
-      final List<dynamic> jsonData = json.decode(jsonString);
-
-      if (jsonData.isNotEmpty) {
-        final random = Random();
-        final randomIndex = random.nextInt(jsonData.length);
-        final selectedVerse = Map<String, dynamic>.from(jsonData[randomIndex]);
-
-        if (mounted) {
-          setState(() {
-            _randomVerse = selectedVerse;
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() {
-          _hasError = true;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading random verse: $e');
-      if (mounted) setState(() {
-        _hasError = true;
-        _isLoading = false;
-      });
-    }
-  }
-
   void _toggleExpansion() {
-    // Only allow toggle if the verse is loaded or has an error
-    // Note: The original Hadith header didn't check for verse data, only loading state.
-    // Keeping your logic to prevent toggling if data is not available yet.
-    if (_randomVerse != null || _hasError || _isLoading) {
-      if (_isExpanded) {
-        _controller.reverse();
-      } else {
-        _loadRandomVerse();
-        _controller.forward();
+    if (_isExpanded) {
+      _controller.reverse();
+    } else {
+      final settings = Provider.of<SettingsService>(context, listen: false);
+      final marks = settings.lastReadMarks;
+
+      Map<String, dynamic>? mostRecent;
+      int? latestTimestamp;
+
+      for (final entry in marks.entries) {
+        final type = entry.value['type'];
+        if (type == 'quran' || type == 'quran_tafseer') {
+          final timestamp = entry.value['timestamp'] as int? ?? 0;
+          if (latestTimestamp == null || timestamp > latestTimestamp) {
+            latestTimestamp = timestamp;
+            mostRecent = entry.value;
+          }
+        }
       }
 
       setState(() {
-        _isExpanded = !_isExpanded;
+        _lastReadMark = mostRecent;
       });
+      _controller.forward();
     }
+    setState(() => _isExpanded = !_isExpanded);
   }
 
-  // --- Dynamic Island Content (Switches between Ayat Today Text and Full Verse) ---
-  Widget _buildDynamicIslandContent(ThemeData theme) {
-    const Color expandedTextColor = Colors.white;
+  void _continueReading() {
+    if (_lastReadMark == null) {
+      Navigator.pushNamed(
+        context,
+        '/surahDetail',
+        arguments: {
+          'surahNumber': 1,
+          'language': Provider.of<SettingsService>(context, listen: false).selectedLanguage,
+          'isTafseer': false,
+        },
+      );
+    } else {
+      Navigator.pushNamed(
+        context,
+        '/surahDetail',
+        arguments: {
+          'surahNumber': _lastReadMark!['surahNumber'],
+          'language': _lastReadMark!['language'] ?? 'english',
+          'isTafseer': _lastReadMark!['isTafseer'] ?? false,
+          'initialVerse': _lastReadMark!['itemNumber'],
+        },
+      );
+    }
+    _controller.reverse();
+    setState(() => _isExpanded = false);
+  }
 
-    // Collapsed Content (Ayat Today text)
-    // FIX: Changed the collapsed text color to white to match Hadith Today
-    final collapsedContent = Center(
-      child: Text(
-        'Ayat Today',
-        style: TextStyle(
-          fontSize: 14 * widget.fontScale,
-          fontWeight: FontWeight.bold,
-          color: expandedTextColor, // Should be white to show up on the collapsed island color
-        ),
+  /// Dampened font scale for island internals.
+  /// Maps user fontScale ~[0.8..1.5] → island fs ~[0.85..1.1]
+  double get _islandFs {
+    return max(0.85, min(1.1, 0.85 + (widget.fontScale - 0.8) * 0.25));
+  }
+
+  Widget _buildCollapsedContent() {
+    final fs = _islandFs;
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.menu_book, color: Colors.white, size: 16 * fs),
+          const SizedBox(width: 5),
+          Text(
+            'Continue Reading',
+            style: TextStyle(
+              fontSize: 12 * fs,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
+  }
 
-    // Expanded Content (Verse)
-    Widget expandedContent;
-    if (_isLoading) {
-      expandedContent = const Center(
-          child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2, color: expandedTextColor,)
-          )
-      );
-    } else if (_hasError || _randomVerse == null) {
-      expandedContent = Center(
-        child: Text(
-          'Error loading verse. Tap to retry.',
-          style: TextStyle(
-              fontSize: 14 * widget.fontScale, color: expandedTextColor),
+  Widget _buildExpandedContent(double availableWidth) {
+    const Color textColor = Colors.white;
+    final fs = _islandFs;
+
+    Widget inner;
+    if (_lastReadMark == null) {
+      // ── No last-read mark: start journey prompt ──
+      inner = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.auto_stories,
+                color: textColor.withOpacity(0.8), size: 32 * fs),
+            const SizedBox(height: 8),
+            Text(
+              'Start Your Quran Journey',
+              style: TextStyle(
+                fontSize: 14 * fs,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Begin from Al-Fatiha (Surah 1)',
+              style: TextStyle(
+                fontSize: 11 * fs,
+                color: textColor.withOpacity(0.7),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _continueReading,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                icon: const Icon(Icons.play_arrow,
+                    color: Color(0xFF2E7D32), size: 16),
+                label: const Text('Start Reading',
+                    style:
+                    TextStyle(color: Color(0xFF2E7D32), fontSize: 12)),
+              ),
+            ),
+          ],
         ),
       );
     } else {
-      final verse = _randomVerse!;
-      expandedContent = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Verse Reference and Close Button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 0),
-            child: Row(
+      // ── Has last-read mark: resume prompt ──
+      final surahNum = _lastReadMark!['surahNumber'];
+      final verseNum = _lastReadMark!['itemNumber'];
+      final surahName = _lastReadMark!['itemName'] ?? 'Surah $surahNum';
+      final isTafseer = _lastReadMark!['isTafseer'] ?? false;
+
+      inner = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Top row: type label + close
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Random Verse: ${verse['sura']}:${verse['aya']}',
+                  isTafseer ? 'Tafseer' : 'Quran',
                   style: TextStyle(
-                    fontSize: 14 * widget.fontScale,
-                    fontWeight: FontWeight.bold,
-                    color: expandedTextColor.withOpacity(0.8),
+                    fontSize: 10 * fs,
+                    color: textColor.withOpacity(0.7),
                   ),
                 ),
                 GestureDetector(
                   onTap: _toggleExpansion,
                   child: Container(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: expandedTextColor.withOpacity(0.2),
+                      color: textColor.withOpacity(0.2),
                     ),
-                    child: const Icon(
-                        Icons.close, size: 18, color: expandedTextColor),
+                    child:
+                    const Icon(Icons.close, size: 14, color: textColor),
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          // Scrollable Content Area (Arabic + Translation)
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Arabic Text
-                  if (verse['arabic'] != null && verse['arabic'].isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Text(
-                        verse['arabic'],
-                        style: TextStyle(
-                          fontSize: 18 * widget.fontScale,
-                          fontFamily: 'Uthmanic',
-                          height: 1.5,
-                          color: expandedTextColor,
-                        ),
-                        textAlign: TextAlign.right,
-                        textDirection: TextDirection.rtl,
-                      ),
-                    ),
+            const SizedBox(height: 6),
 
-                  // Translation
-                  Text(
-                    '${verse['translation'] ?? 'No translation available.'}',
-                    style: TextStyle(
-                      fontSize: 14 * widget.fontScale,
-                      fontStyle: FontStyle.italic,
-                      color: expandedTextColor.withOpacity(0.8),
-                    ),
-                    maxLines: null,
-                    overflow: TextOverflow.fade,
-                  ),
-                ],
+            // Surah name
+            Text(
+              surahName,
+              style: TextStyle(
+                fontSize: 15 * fs,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+
+            // Verse info
+            Text(
+              'Last read: Verse $verseNum',
+              style: TextStyle(
+                fontSize: 12 * fs,
+                color: textColor.withOpacity(0.8),
               ),
             ),
-          ),
-          // Action Buttons
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  icon: const Icon(
-                      Icons.refresh, size: 18, color: expandedTextColor),
-                  label: const Text(
-                      'New Verse', style: TextStyle(color: expandedTextColor)),
-                  onPressed: _loadRandomVerse,
+            const SizedBox(height: 10),
+
+            // Continue button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _continueReading,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                 ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  icon: const Icon(
-                      Icons.copy, size: 18, color: expandedTextColor),
-                  label: const Text(
-                      'Copy', style: TextStyle(color: expandedTextColor)),
-                  onPressed: () {
-                    final text = 'Surah ${verse['sura']}:${verse['aya']}\n${verse['arabic']}\n${verse['translation']}';
-                    Clipboard.setData(ClipboardData(text: text));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Verse copied')),
-                    );
-                  },
-                ),
-              ],
+                icon: const Icon(Icons.play_arrow,
+                    color: Color(0xFF2E7D32), size: 16),
+                label: const Text('Continue',
+                    style:
+                    TextStyle(color: Color(0xFF2E7D32), fontSize: 12)),
+              ),
             ),
-          )
-        ],
+          ],
+        ),
       );
     }
 
-    // Use AnimatedSwitcher to smoothly transition content
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: child,
-        );
-      },
-      child: _isExpanded
-          ? KeyedSubtree(
-          key: const ValueKey('expanded_content'), child: expandedContent)
-          : KeyedSubtree(
-          key: const ValueKey('collapsed_content'), child: collapsedContent),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: SizedBox(width: availableWidth, child: inner),
     );
   }
 
-  // Helper widget to hold the actual title structure
   Widget _getTitleContent(ThemeData theme) {
-    // Width property is controlled by the parent AnimatedBuilder
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(
-              Icons.book_outlined,
-              color: theme.colorScheme.primary,
-              size: 24 * widget.fontScale,
-            ),
+            Icon(Icons.book_outlined,
+                color: theme.colorScheme.primary, size: 24 * widget.fontScale),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                widget.title, // "Holy Quran"
+                widget.title,
                 style: TextStyle(
                   fontSize: 22 * widget.fontScale,
                   fontWeight: FontWeight.bold,
@@ -311,30 +305,21 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
         ),
         const SizedBox(height: 8),
         Divider(
-          height: 1,
-          color: theme.colorScheme.onSurface.withOpacity(0.1),
-          thickness: 1,
-        ),
+            height: 1,
+            color: theme.colorScheme.onSurface.withOpacity(0.1),
+            thickness: 1),
       ],
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final screenWidth = MediaQuery
-        .of(context)
-        .size
-        .width;
+    final screenWidth = MediaQuery.of(context).size.width;
     final double paddingHorizontal = 16.0;
-
-    // Fixed constant for the title's maximum reserved space
     final double titleMaxWidth = 200.0 * widget.fontScale;
-    const double spaceBetween = 8.0; // A small assumed space if not using spaceBetween
+    const double collapsedIslandWidth = 160.0;
 
-    // --- START OF COLOR FIX ---
-    // Define the color gradient for the expanded island, matching DynamicHorizontalHeader
     final Gradient dynamicGradient = LinearGradient(
       colors: [
         theme.colorScheme.tertiary.withOpacity(0.9),
@@ -344,68 +329,43 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
       end: Alignment.bottomRight,
     );
 
-    // We keep these defined but they are no longer used for the background color
-    final Color islandCollapsedColor = theme.colorScheme.primary.withOpacity(
-        0.8);
-    const Color islandExpandedColor = Colors.black;
-    // --- END OF COLOR FIX ---
-
-    // Define the required width for the collapsed state
-    const double collapsedIslandWidth = 120.0;
-
     return Padding(
-      padding: EdgeInsets.symmetric(
-          horizontal: paddingHorizontal, vertical: 8.0),
-      child: AnimatedBuilder(
-        animation: _animation,
+      padding: EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 8.0),
+      child: ListenableBuilder(
+        listenable: _animation,
         builder: (context, child) {
-          // 1. Calculate the current width of the shrinking title element
-          final double titleShrinkFactor = ReverseAnimation(_animation).value;
+          final double titleShrinkFactor =
+              ReverseAnimation(_animation).value;
           final double currentTitleWidth = titleMaxWidth * titleShrinkFactor;
-
-          // 2. Calculate the total available width for the island
-          final double maxRowWidth = screenWidth - (paddingHorizontal * 2);
-
-          final double targetExpandedWidth = maxRowWidth - currentTitleWidth -
-              (spaceBetween * (1 - _animation.value));
-
-          // Interpolate current island width:
+          final double maxRowWidth =
+              screenWidth - (paddingHorizontal * 2);
+          final double targetExpandedWidth =
+              maxRowWidth - currentTitleWidth;
           final double currentIslandWidth = Tween<double>(
-              begin: collapsedIslandWidth,
-              end: targetExpandedWidth
+            begin: collapsedIslandWidth,
+            end: targetExpandedWidth,
           ).evaluate(_animation);
-
-          // Ensure the island doesn't shrink smaller than its collapsed size
-          final double finalIslandWidth = max(
-              collapsedIslandWidth, currentIslandWidth);
-
-
-          // Animate height and border radius (these are fine)
-          final double currentHeight = Tween<double>(
-              begin: _collapsedHeight, end: _expandedHeight).evaluate(
-              _animation);
-          final double currentRadius = Tween<double>(
-              begin: _collapsedHeight / 2, end: 20.0).evaluate(_animation);
-
-          // NOTE: blendedColor is no longer used for background, but the previous code still calculated it.
-          // We can remove it entirely, but keeping your original code structure intact as requested:
-          final Color blendedColor = Color.lerp(
-              islandCollapsedColor, islandExpandedColor, _animation.value)!;
-
+          final double finalIslandWidth =
+          max(collapsedIslandWidth, currentIslandWidth);
+          final double currentHeight =
+          Tween<double>(begin: _collapsedHeight, end: _expandedHeight)
+              .evaluate(_animation);
+          final double currentRadius =
+          Tween<double>(begin: _collapsedHeight / 2, end: 20.0)
+              .evaluate(_animation);
 
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Static Title Part (Left side - Shrinks and disappears)
+              // ── Left: title (shrinks on expand) ──
               SizeTransition(
                 sizeFactor: ReverseAnimation(_animation),
-                // Shrink when animation forwards
                 axis: Axis.horizontal,
                 child: SizedBox(
-                  width: titleMaxWidth, // Use the max width here
+                  width: titleMaxWidth,
                   child: Opacity(
-                    opacity: 1.0 - _animation.value, // Fade out as it shrinks
+                    opacity: 1.0 - _animation.value,
                     child: Transform.scale(
                       scale: 1.0 - _animation.value,
                       alignment: Alignment.centerLeft,
@@ -415,28 +375,37 @@ class _DynamicSectionHeaderState extends State<DynamicSectionHeader>
                 ),
               ),
 
-              // 2. Dynamic Island Part (Right side - Expands/Contracts)
+              // ── Right: dynamic island ──
               GestureDetector(
                 onTap: _toggleExpansion,
                 child: Container(
                   height: currentHeight,
-                  width: finalIslandWidth, // Use the calculated width
-
+                  width: finalIslandWidth,
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    // --- FIX: Apply the gradient instead of a single color ---
                     gradient: dynamicGradient,
-                    // --- blendedColor property removed as it conflicts with gradient ---
                     borderRadius: BorderRadius.circular(currentRadius),
                     boxShadow: [
                       BoxShadow(
-                        color: islandExpandedColor.withOpacity(
-                            _animation.value * 0.4),
+                        color: theme.colorScheme.primary
+                            .withOpacity(_animation.value * 0.4),
                         blurRadius: 12 * _animation.value,
                         offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  child: _buildDynamicIslandContent(theme),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: _isExpanded
+                        ? KeyedSubtree(
+                      key: const ValueKey('expanded'),
+                      child: _buildExpandedContent(finalIslandWidth),
+                    )
+                        : KeyedSubtree(
+                      key: const ValueKey('collapsed'),
+                      child: _buildCollapsedContent(),
+                    ),
+                  ),
                 ),
               ),
             ],
