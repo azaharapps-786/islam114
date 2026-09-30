@@ -3,28 +3,139 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Download Islam 114 App</title>
+  <title>Islam 114 — Download Official Android App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 50px 20px; background-color: #f4f4f9; }
-    h1 { color: #333; }
-    p { color: #666; font-size: 18px; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #0f1a15;
+      color: #e2e8f0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background: #16241d;
+      border: 1px solid #23382d;
+      border-radius: 20px;
+      max-width: 480px;
+      width: 100%;
+      padding: 40px 32px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(46, 164, 79, 0.15);
+      color: #4ade80;
+      font-weight: 600;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(74, 222, 128, 0.3);
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+    p.subtitle {
+      color: #94a3b8;
+      font-size: 15px;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .btn-container {
+      margin-bottom: 28px;
+    }
     .btn {
       display: inline-block;
-      background-color: #2ea44f;
-      color: white;
-      padding: 15px 30px;
-      font-size: 20px;
+      width: 100%;
+      background: linear-gradient(135deg, #2ea44f 0%, #1e7e34 100%);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 17px;
+      padding: 16px;
+      border-radius: 12px;
       text-decoration: none;
-      border-radius: 8px;
-      margin-top: 20px;
-      font-weight: bold;
+      transition: all 0.2s ease;
+      box-shadow: 0 8px 20px rgba(46, 164, 79, 0.3);
     }
-    .btn:hover { background-color: #22863a; }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 25px rgba(46, 164, 79, 0.5);
+      background: linear-gradient(135deg, #34b859 0%, #228f3b 100%);
+    }
+    .meta-info {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 8px;
+    }
+    .features {
+      border-top: 1px solid #23382d;
+      padding-top: 24px;
+      text-align: left;
+    }
+    .features h3 {
+      font-size: 14px;
+      color: #cbd5e1;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .features ul {
+      list-style: none;
+    }
+    .features li {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+    }
+    .features li::before {
+      content: "✓";
+      color: #4ade80;
+      font-weight: bold;
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
-  <h1>Islam 114 App</h1>
-  <p>Click below to download and install the app directly on your Android phone.</p>
-  <a class="btn" href="https://github.com/azaharapps-786/islam114/releases/download/v1.0.0/app-release.apk">Download App (APK)</a>
+
+<div class="card">
+  <span class="badge">Official Version v1.0.0</span>
+  <h1>Islam 114</h1>
+  <p class="subtitle">Download the app directly to your Android device for instant access.</p>
+
+  <div class="btn-container">
+    <a class="btn" href="https://github.com/azaharapps-786/islam114/releases/download/v1.0.0/app-release.apk">
+      Download APK (81.5 MB)
+    </a>
+    <p class="meta-info">Android 5.0 and above required</p>
+  </div>
+
+  <div class="features">
+    <h3>How to Install</h3>
+    <ul>
+      <li>Tap the button above to download the file</li>
+      <li>Open the downloaded file on your Android phone</li>
+      <li>If prompted, allow "Install from Unknown Sources"</li>
+    </ul>
+  </div>
+</div>
+
 </body>
 </html>
