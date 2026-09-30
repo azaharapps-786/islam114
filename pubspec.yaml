@@ -46,6 +46,9 @@ dependencies:
   # AI & misc
   google_generative_ai: ^0.4.0
 
+  firebase_core: ^3.12.1
+  cloud_firestore: ^5.6.5
+
   # UI & Animation
   flutter_svg: ^2.0.9
   google_fonts: ^6.1.0

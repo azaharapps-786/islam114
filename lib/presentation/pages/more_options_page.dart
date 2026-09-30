@@ -1,9 +1,13 @@
+
+// lib/presentation/pages/more_options_page.dart
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:haptic_feedback/haptic_feedback.dart';
 import '../../core/services/settings_service.dart';
+import '../../core/services/remote_config_service.dart'; // ADDED
 import '../widgets/more_option_card.dart';
 
 class MoreOptionsPage extends StatefulWidget {
@@ -18,16 +22,27 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
   late List<Animation<double>> _cardFadeAnimations;
   late List<Animation<double>> _cardScaleAnimations;
   late List<Animation<double>> _cardBounceAnimations;
-  String _selectedLanguage = 'english'; // default
+  String _selectedLanguage = 'english';
+
+  // ADDED: Map to link routes to admin toggle keys
+  static const Map<String, String> _featureKeyMap = {
+    '/rabbanaDuas': 'dua',
+    '/darood': 'darood',
+    '/niyat': 'niyat',
+    '/allahNames': 'allah_names',
+    '/library': 'library',
+    '/amalNamah': 'amal_namah',
+  };
 
   @override
   void initState() {
     super.initState();
     final settings = Provider.of<SettingsService>(context, listen: false);
     try {
-      _selectedLanguage = (settings as dynamic).selectedLanguage?.toString().toLowerCase() ??
-          (settings as dynamic).language?.toString().toLowerCase() ??
-          'english';
+      _selectedLanguage =
+          (settings as dynamic).selectedLanguage?.toString().toLowerCase() ??
+              (settings as dynamic).language?.toString().toLowerCase() ??
+              'english';
     } catch (e) {
       _selectedLanguage = 'english';
     }
@@ -118,64 +133,83 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
   void _showLanguageSelectionDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Select Language'),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ...['english', 'assamese', 'hindi', 'bengali'].map((lang) {
-              final isSelected = lang == _selectedLanguage;
-              return ListTile(
-                dense: true,
-                leading: Icon(
-                  isSelected ? Icons.check_circle : Icons.translate,
-                  color: isSelected ? Theme.of(context).colorScheme.primary : null,
-                ),
-                title: Text(
-                  lang[0].toUpperCase() + lang.substring(1),
-                  style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
-                onTap: () {
-                  Haptics.vibrate(HapticsType.light);
+      builder: (context) =>
+          AlertDialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            title: const Text('Select Language'),
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8, vertical: 12),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...['english', 'assamese', 'hindi', 'bengali'].map((lang) {
+                  final isSelected = lang == _selectedLanguage;
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(
+                      isSelected ? Icons.check_circle : Icons.translate,
+                      color: isSelected ? Theme
+                          .of(context)
+                          .colorScheme
+                          .primary : null,
+                    ),
+                    title: Text(
+                      lang[0].toUpperCase() + lang.substring(1),
+                      style: TextStyle(
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight
+                            .normal,
+                      ),
+                    ),
+                    onTap: () {
+                      Haptics.vibrate(HapticsType.light);
 
-                  // 1. Update Local UI immediately
-                  setState(() => _selectedLanguage = lang);
+                      setState(() => _selectedLanguage = lang);
 
-                  // 2. SAVE to the Global Settings Service so it's remembered!
-                  final settings = Provider.of<SettingsService>(context, listen: false);
-                  try {
-                    // We use dynamic to call your specific setter (likely setLanguage or similar)
-                    // If your service has a different method name, replace 'setSelectedLanguage'
-                    (settings as dynamic).setSelectedLanguage(lang);
-                  } catch (e) {
-                    debugPrint("Note: Could not call setSelectedLanguage on service: $e");
-                  }
+                      final settings = Provider.of<SettingsService>(
+                          context, listen: false);
+                      try {
+                        (settings as dynamic).setSelectedLanguage(lang);
+                      } catch (e) {
+                        debugPrint(
+                            "Note: Could not call setSelectedLanguage on service: $e");
+                      }
 
-                  Navigator.pop(context);
-                },
-              );
-            }),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+                      Navigator.pop(context);
+                    },
+                  );
+                }),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final double fontScale = Provider.of<SettingsService>(context).fontScale;
+    final double fontScale = Provider
+        .of<SettingsService>(context)
+        .fontScale;
+    final remoteConfig = Provider.of<RemoteConfigService>(context); // ADDED
     final theme = Theme.of(context);
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery
+        .of(context)
+        .size
+        .width;
+
+    // ADDED: Filter out disabled features from More Options
+    final activeOptions = _moreOptions.where((option) {
+      final route = option['route'] as String;
+      final key = _featureKeyMap[route];
+      if (key == null) return true;
+      return !remoteConfig.isFeatureDisabled(key);
+    }).toList();
 
     return Scaffold(
       body: Container(
@@ -221,13 +255,22 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
                     ),
                   ),
                   Expanded(
-                    child: SingleChildScrollView(
+                    child: activeOptions.isEmpty // ADDED: Handle empty state
+                        ? const Center(
+                      child: Text(
+                        'No features available right now.',
+                        style: TextStyle(color: Colors.white54, fontSize: 16),
+                      ),
+                    )
+                        : SingleChildScrollView(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const SizedBox(height: 12),
-                          _buildFeatureGrid(fontScale, theme, screenWidth),
+                          _buildFeatureGrid(
+                              activeOptions, fontScale, theme, screenWidth),
+                          // UPDATED: Pass activeOptions
                           const SizedBox(height: 32),
                         ],
                       ),
@@ -235,30 +278,33 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
                   ),
                 ],
               ),
-              Positioned(
-                right: 24,
-                bottom: 32,
-                child: FloatingActionButton.extended(
-                  onPressed: () {
-                    Haptics.vibrate(HapticsType.light);
-                    _showLanguageSelectionDialog(context);
-                  },
-                  label: Text(
-                    'Language: ${_selectedLanguage[0].toUpperCase() + _selectedLanguage.substring(1)}',
-                    style: TextStyle(
-                      fontSize: (14 * fontScale).clamp(12.0, 16.0),
-                      fontWeight: FontWeight.w600,
+              // UPDATED: Only show language FAB if there are options that use language
+              if (activeOptions.any((opt) => opt['skipLanguageDialog'] != true))
+                Positioned(
+                  right: 24,
+                  bottom: 32,
+                  child: FloatingActionButton.extended(
+                    onPressed: () {
+                      Haptics.vibrate(HapticsType.light);
+                      _showLanguageSelectionDialog(context);
+                    },
+                    label: Text(
+                      'Language: ${_selectedLanguage[0].toUpperCase() +
+                          _selectedLanguage.substring(1)}',
+                      style: TextStyle(
+                        fontSize: (14 * fontScale).clamp(12.0, 16.0),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    icon: const Icon(Icons.translate_rounded, size: 20),
+                    backgroundColor: Colors.white.withOpacity(0.92),
+                    foregroundColor: const Color(0xFF0A4D4D),
+                    elevation: 6,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(32),
                     ),
                   ),
-                  icon: const Icon(Icons.translate_rounded, size: 20),
-                  backgroundColor: Colors.white.withOpacity(0.92),
-                  foregroundColor: const Color(0xFF0A4D4D),
-                  elevation: 6,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(32),
-                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -266,7 +312,9 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
     );
   }
 
-  Widget _buildFeatureGrid(double fontScale, ThemeData theme, double screenWidth) {
+  Widget _buildFeatureGrid(List<Map<String, dynamic>> activeOptions,
+      double fontScale, ThemeData theme, double screenWidth) {
+    // UPDATED
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = screenWidth > 600 ? 3 : 2;
@@ -282,25 +330,38 @@ class _MoreOptionsPageState extends State<MoreOptionsPage> with SingleTickerProv
             mainAxisSpacing: 16,
             childAspectRatio: aspectRatio,
           ),
-          itemCount: _moreOptions.length,
+          itemCount: activeOptions.length,
+          // UPDATED
           itemBuilder: (context, index) {
-            final option = _moreOptions[index];
+            final option = activeOptions[index]; // UPDATED
             return AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
+                // Prevent animation index out of bounds if list is smaller than 8
+                final fadeVal = index < _cardFadeAnimations.length
+                    ? _cardFadeAnimations[index].value
+                    : 1.0;
+                final bounceVal = index < _cardBounceAnimations.length
+                    ? _cardBounceAnimations[index].value
+                    : 0.0;
+                final scaleVal = index < _cardScaleAnimations.length
+                    ? _cardScaleAnimations[index].value
+                    : 1.0;
+
                 return Opacity(
-                  opacity: _cardFadeAnimations[index].value,
+                  opacity: fadeVal,
                   child: Transform.translate(
-                    offset: Offset(0, _cardBounceAnimations[index].value),
+                    offset: Offset(0, bounceVal),
                     child: Transform.scale(
-                      scale: _cardScaleAnimations[index].value,
+                      scale: scaleVal,
                       child: MoreOptionCard(
                         title: option['title'],
                         icon: option['icon'],
                         color: option['color'],
                         fontScale: fontScale,
                         onTap: () {
-                          final bool skipDialog = option['skipLanguageDialog'] == true;
+                          final bool skipDialog = option['skipLanguageDialog'] ==
+                              true;
                           if (skipDialog) {
                             Navigator.pushNamed(
                               context,

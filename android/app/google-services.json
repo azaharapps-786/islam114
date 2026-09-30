@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "345178253147",
+    "project_id": "islam114-7ba9c",
+    "storage_bucket": "islam114-7ba9c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:345178253147:android:df86e9e27efdfcee25dc7e",
+        "android_client_info": {
+          "package_name": "com.azahar.islam114"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA08GXRaQvvC6h8PCX1_SUmuNgcTssN0lI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

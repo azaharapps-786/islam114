@@ -6,12 +6,11 @@ import 'dart:ui' as ui;
 
 import 'package:islam114/main.dart';
 import '../../core/services/settings_service.dart';
+import '../../core/services/remote_config_service.dart'; // ADDED
 import '../widgets/home_feature_card.dart';
 import '../widgets/home_bottom_bar.dart';
 import '../widgets/tafseer_language_dialog.dart';
-// NEW IMPORT for the Dynamic Section Header
-import '../widgets/dynamic_section_header.dart'; // Replaces the old DynamicVerseIsland
-// ADDED IMPORT for the Dynamic Horizontal Header
+import '../widgets/dynamic_section_header.dart';
 import '../widgets/dynamic_horizontal_header.dart';
 
 class HomePage extends StatefulWidget {
@@ -27,9 +26,21 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
   late Animation<double> _scaleAnimation;
   late Animation<double> _slideAnimation;
 
-  // Track when the animation sequence started
   DateTime _animationStartTime = DateTime.now();
   int _animationKey = 0;
+
+  // ADDED: Map to link routes to admin toggle keys
+  static const Map<String, String> _featureKeyMap = {
+    '/surahList': 'quran',
+    '/bookmarks': 'bookmarks',
+    '/hadith': 'hadith',
+    '/namaz': 'namaz_times',
+    '/tasbeeh': 'tasbeeh',
+    '/dictionary': 'dictionary',
+    '/calendar': 'calendar',
+    '/qibla': 'qibla',
+    '/more': 'more_options',
+  };
 
   @override
   void initState() {
@@ -85,7 +96,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
     _headerController.forward();
     if (mounted) {
       setState(() {
-        // Reset the start time so animations play again
         _animationStartTime = DateTime.now();
         _animationKey++;
       });
@@ -108,7 +118,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
         return const TafseerLanguageDialog();
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        // Elastic scale animation
         final scaleAnimation = Tween<double>(
           begin: 0.5,
           end: 1.0,
@@ -119,7 +128,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
           ),
         );
 
-        // Fade animation
         final fadeAnimation = Tween<double>(
           begin: 0.0,
           end: 1.0,
@@ -140,7 +148,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
       },
     );
   }
-  // Static constant data - RESTORED to original (About Us removed from grid)
+
   static const List<Map<String, dynamic>> _primaryFeatures = [
     {'title': 'অসমীয়া কোৰআন', 'icon': 'assets/icons/quran_assamese.svg', 'route': '/surahList', 'params': {'language': 'assamese'}, 'emoji': '📖'},
     {'title': 'English Quran', 'icon': 'assets/icons/quran_english.svg', 'route': '/surahList', 'params': {'language': 'english'}, 'emoji': '📕'},
@@ -164,11 +172,27 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
   @override
   Widget build(BuildContext context) {
     final double fontScale = Provider.of<SettingsService>(context).fontScale;
+    final remoteConfig = Provider.of<RemoteConfigService>(context); // ADDED
     final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
     final isSmallScreen = size.height < 700 || size.width < 360;
     final mainTextSize = isSmallScreen ? 24.0 : 32.0;
     final headerPadding = isSmallScreen ? 12.0 : 16.0;
+
+    // ADDED: Filter out disabled features
+    final activePrimaryFeatures = _primaryFeatures.where((f) {
+      final route = f['route'] as String;
+      final key = _featureKeyMap[route];
+      if (key == null) return true;
+      return !remoteConfig.isFeatureDisabled(key);
+    }).toList();
+
+    final activeSecondaryFeatures = _secondaryFeatures.where((f) {
+      final route = f['route'] as String;
+      final key = _featureKeyMap[route];
+      if (key == null) return true;
+      return !remoteConfig.isFeatureDisabled(key);
+    }).toList();
 
     return Scaffold(
       body: SafeArea(
@@ -187,7 +211,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // Header
               SliverToBoxAdapter(
                 child: RepaintBoundary(
                   child: AnimatedBuilder(
@@ -272,30 +295,34 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Rout
                 ),
               ),
 
-              SliverPadding(
-                padding: const EdgeInsets.only(top: 16, bottom: 12),
-                sliver: SliverToBoxAdapter(
-                  child: DynamicSectionHeader(
-                    title: 'Holy Quran',
-                    fontScale: fontScale,
+              // UPDATED: Conditionally show Primary Grid
+              if (activePrimaryFeatures.isNotEmpty) ...[
+                SliverPadding(
+                  padding: const EdgeInsets.only(top: 16, bottom: 12),
+                  sliver: SliverToBoxAdapter(
+                    child: DynamicSectionHeader(
+                      title: 'Holy Quran',
+                      fontScale: fontScale,
+                    ),
                   ),
                 ),
-              ),
+                _buildSliverFeatureGrid(activePrimaryFeatures, 3, fontScale, theme),
+              ],
 
-              _buildSliverFeatureGrid(_primaryFeatures, 3, fontScale, theme),
-
-              SliverPadding(
-                padding: const EdgeInsets.only(top: 32, bottom: 12),
-                sliver: SliverToBoxAdapter(
-                  child: DynamicHorizontalHeader(
-                    title: 'Tools & More',
-                    fontScale: fontScale,
-                    theme: theme,
+              // UPDATED: Conditionally show Secondary Grid
+              if (activeSecondaryFeatures.isNotEmpty) ...[
+                SliverPadding(
+                  padding: const EdgeInsets.only(top: 32, bottom: 12),
+                  sliver: SliverToBoxAdapter(
+                    child: DynamicHorizontalHeader(
+                      title: 'Tools & More',
+                      fontScale: fontScale,
+                      theme: theme,
+                    ),
                   ),
                 ),
-              ),
-
-              _buildSliverFeatureGrid(_secondaryFeatures, 3, fontScale, theme),
+                _buildSliverFeatureGrid(activeSecondaryFeatures, 3, fontScale, theme),
+              ],
 
               const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
             ],
